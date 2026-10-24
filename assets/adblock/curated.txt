@@ -1,0 +1,67 @@
+# Site-specific block rules for hianime.dk and its player embeds.
+# Every entry in the first block was observed in REA browser captures on 2026-10-24
+# (evidence ev_3104429a…, ev_b928cb9b…, ev_d1bce273…) or read from the shipped ad loaders.
+# One domain per line; a domain also covers all of its subdomains.
+
+# --- Observed: hianime.dk main page ---
+mamminfinfish.com        # popunder / tab-under / full-screen overlay script (qp.mamminfinfish.com)
+googletagmanager.com     # gtag loader
+google-analytics.com     # analytics beacons
+sharethis.com            # share widget + page-view beacon
+aniwatch.rest            # cross-promo banner target
+
+# --- Observed: megaplay.buzz / vidtube.site player iframes ---
+nekostream.site          # Monetag loader (mt/3p.js, injects zone 12069550)
+llvpn.com                # Monetag tag.min.js
+rtmark.net               # Monetag id/beacon (my.rtmark.net/gid.js)
+luugy.com                # Monetag ad request (iclick build)
+statlytic.net            # player analytics
+plausible.io             # player analytics
+jwpltx.com               # jwplayer analytics pings
+
+# --- Common ad / popunder / tracker networks on streaming mirrors ---
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+adservice.google.com
+imasdk.googleapis.com
+pagead2.googlesyndication.com
+adnxs.com
+popads.net
+popcash.net
+propellerads.com
+propellerclick.com
+onclickads.net
+onclkds.com
+onclickalgo.com
+monetag.com
+adsterra.com
+a-ads.com
+exoclick.com
+exosrv.com
+juicyads.com
+hilltopads.net
+clickadu.com
+adcash.com
+admaven.com
+ad-maven.com
+highperformanceformat.com
+profitablegatecpm.com
+effectivegatecpm.com
+pemsrv.com
+realsrv.com
+tsyndicate.com
+mgid.com
+taboola.com
+outbrain.com
+revcontent.com
+galaksion.com
+histats.com
+whos.amung.us
+cloudflareinsights.com
+hotjar.com
+clarity.ms
+scorecardresearch.com
+quantserve.com
+connect.facebook.net
+mc.yandex.ru

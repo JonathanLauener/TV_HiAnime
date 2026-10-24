@@ -1,0 +1,8 @@
+# Signing key and its password: private, never commit or copy into another project.
+keystore/
+*.jks
+*.password
+# Build output
+build/
+*.apk
+*.apk.idsig
