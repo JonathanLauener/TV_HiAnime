@@ -43,7 +43,9 @@ import android.widget.TextView;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -71,6 +73,16 @@ public class MainActivity extends Activity {
     private static final long HIDE_POINTER_BROWSE_MS = 10_000;
     private static final long HIDE_POINTER_PLAYER_MS = 3_000;
 
+    // Snap navigation (the default): the D-pad jumps a focus ring between links and buttons (snap.js).
+    /** Holding OK this long switches to the pointer instead of clicking. */
+    private static final long LONG_PRESS_MS = 600;
+    /** Fastest focus steps while a direction is held (the TV repeats keys every ~50 ms). */
+    private static final long SNAP_REPEAT_MS = 120;
+    /** How long a synthesised tap holds the finger down. */
+    private static final long TAP_MS = 40;
+    /** A page that hasn't answered a snap call by then is treated as having no snap.js. */
+    private static final long SNAP_TIMEOUT_MS = 1500;
+
     /** Scroll whatever is under the pointer (inner scroll boxes first, then the page). */
     private static final String SCROLL_JS = "(function(x,y,dx,dy){var k=window.innerWidth/%d;x*=k;y*=k;dx*=k;dy*=k;"
             + "var el=document.elementFromPoint(x,y);"
@@ -80,9 +92,10 @@ public class MainActivity extends Activity {
             + "el=el.parentElement;}window.scrollBy(dx,dy);})(%.1f,%.1f,%.1f,%.1f)";
 
     private static final String HELP_TEXT = "HiAnime TV — remote controls\n\n"
-            + "D-pad  move the pointer (hold to speed up)\n"
-            + "OK  click  ·  hold OK and move to drag\n"
-            + "Pointer at the screen edge, CH +/−  scroll\n"
+            + "D-pad  jump between links and buttons  ·  OK  open\n"
+            + "CH +/−  page up/down\n"
+            + "Hold OK  mouse pointer (D-pad moves it, OK clicks, hold OK\n"
+            + "    and move to drag, screen edge scrolls; it hides after 10 s)\n"
             + "BACK  go back / leave fullscreen\n"
             + "▶❙❙  play/pause   ◀◀ ▶▶  seek 10 s   ⏮ ⏭  seek 1 min\n\n"
             + "In fullscreen: OK play/pause · ◀ ▶ seek · ▲ ▼ pointer\n\n"
@@ -124,6 +137,14 @@ public class MainActivity extends Activity {
     private float pendingScrollX, pendingScrollY;
     private long lastScrollFlush;
 
+    // Snap state.
+    private static final int SNAP_OK = 4, SNAP_PAGE_UP = 5, SNAP_PAGE_DOWN = 6;   // after the directions 0-3
+    private boolean snapBusy;          // a snap.js call (or the tap OK sends) is in flight
+    /** Presses that came while busy, in order: {command, 1 if a held key's repeat}. Run as each call returns. */
+    private final ArrayDeque<int[]> snapQueue = new ArrayDeque<>();
+    private long lastSnapMove;
+    private int okCode;                // the OK key held in snap mode (0: none)
+
     private long lastBackPress;
     /** Target of the main-frame navigation in flight (server redirects are judged by where they came from). */
     private volatile Uri pendingMainUrl;
@@ -146,7 +167,8 @@ public class MainActivity extends Activity {
         // On a TV, lay pages out 1280 CSS px wide (see inject.js); phones keep the site's own viewport.
         UiModeManager uiMode = (UiModeManager) getSystemService(UI_MODE_SERVICE);
         boolean tv = uiMode != null && uiMode.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
-        injectJs = "window.__hitvViewport=" + (tv ? TV_LAYOUT_WIDTH : 0) + ";" + readAsset("inject.js");
+        injectJs = "window.__hitvViewport=" + (tv ? TV_LAYOUT_WIDTH : 0) + ";" + readAsset("inject.js")
+                + "\n" + readAsset("snap.js");
         mainHosts.add("hianime.dk");
         mainHosts.addAll(prefs.getStringSet("main_hosts", new HashSet<String>()));
 
@@ -158,8 +180,8 @@ public class MainActivity extends Activity {
         web.loadUrl(start != null && isMainHost(Uri.parse(start).getHost()) ? start : HOME_URL);
 
         handleDebugIntent(getIntent());
-        if (!prefs.getBoolean("help_seen", false)) {
-            prefs.edit().putBoolean("help_seen", true).apply();
+        if (!prefs.getBoolean("help_seen_v11", false)) {
+            prefs.edit().putBoolean("help_seen_v11", true).apply();
             showHelp(14_000);
         }
     }
@@ -179,6 +201,7 @@ public class MainActivity extends Activity {
         root.addView(fullscreen, match());
 
         cursor = new CursorView(this);
+        cursor.setVisibility(View.GONE);   // snap mode first; holding OK brings the pointer
         root.addView(cursor, match());
 
         osd = new TextView(this);
@@ -521,7 +544,10 @@ public class MainActivity extends Activity {
             });
 
     private void inject() {
-        if (!injectJs.isEmpty()) web.evaluateJavascript(injectJs, null);
+        // snap.js shows its focus ring on load only while the pointer is off.
+        if (!injectJs.isEmpty()) {
+            web.evaluateJavascript("window.__hitvPointer=" + (cursor.getVisibility() == View.VISIBLE) + ";" + injectJs, null);
+        }
     }
 
     private void showError(String failingUrl, String description) {
@@ -613,6 +639,7 @@ public class MainActivity extends Activity {
             fullscreen.setVisibility(View.VISIBLE);
             web.setVisibility(View.INVISIBLE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            cancelSnapInput();
             hidePointer();
             osd("OK play/pause · ◀ ▶ seek · ▲ ▼ pointer · BACK exit");
         }
@@ -678,7 +705,7 @@ public class MainActivity extends Activity {
         customViewCallback = null;
         ui.removeCallbacks(releaseScreen);
         ui.postDelayed(releaseScreen, 120_000);
-        showPointer();
+        if (cursor.getVisibility() != View.VISIBLE) resumeSnap(false);
         web.requestFocus();
     }
 
@@ -686,13 +713,14 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.__hitvTheater?window.__hitvTheater(" + on + "):'none'", result -> {
             if ("\"on\"".equals(result)) {
                 theater = true;
+                cancelSnapInput();
                 hidePointer();
                 keepAwake(120_000);
                 osd("Theater mode · OK play/pause · ◀ ▶ seek · BACK exit");
             } else {
                 theater = false;
                 if (on) osd("No video player on this page");
-                else showPointer();
+                else if (cursor.getVisibility() != View.VISIBLE) resumeSnap(false);
             }
         });
     }
@@ -794,14 +822,25 @@ public class MainActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_PAGE_UP:
-                if (isDown) scrollPage(-1);
+                if (isDown) scrollPage(-1, !first);
+                else dropSnapRepeats();
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
             case KeyEvent.KEYCODE_PAGE_DOWN:
-                if (isDown) scrollPage(1);
+                if (isDown) scrollPage(1, !first);
+                else dropSnapRepeats();
                 return true;
             case KeyEvent.KEYCODE_BACK:
-                if (first) onBackKey();
+                if (first) {
+                    if (cursor.getVisibility() != View.VISIBLE && !inPlayerView()) {
+                        // Snap mode: the page closes what it has open (search, side menu, dialog) first.
+                        snapCall("'back'", r -> {
+                            if (r == null || !"handled".equals(r.optString("r"))) onBackKey();
+                        });
+                    } else {
+                        onBackKey();
+                    }
+                }
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN:
@@ -833,6 +872,9 @@ public class MainActivity extends Activity {
         }
 
         if (BuildConfig.DEBUG && first) Log.d(TAG, "key " + KeyEvent.keyCodeToString(code) + " pointerVisible=" + (cursor.getVisibility() == View.VISIBLE));
+        if (!isDown && code == okCode && (cursor.getVisibility() == View.VISIBLE || inPlayerView())) {
+            disarmOk();   // pressed in snap mode, released after the mode changed: neither a click nor a hold
+        }
         if (cursor.getVisibility() != View.VISIBLE) {
             if (inPlayerView()) {
                 // Pointer hidden over the video: the remote drives playback directly.
@@ -844,12 +886,14 @@ public class MainActivity extends Activity {
                     if (isDown && e.getRepeatCount() % 3 == 0) seekBy(code == KeyEvent.KEYCODE_DPAD_LEFT ? -10 : 10);
                     return true;
                 }
+                // ▲ ▼ bring the pointer back to reach the player's own buttons.
+                if (first) {
+                    showPointer();
+                    swallowKey = code;
+                }
+                return true;
             }
-            if (first) {
-                showPointer();
-                swallowKey = code;
-            }
-            return true;
+            return onSnapKey(e);
         }
 
         lastPointerActivity = SystemClock.uptimeMillis();
@@ -883,6 +927,193 @@ public class MainActivity extends Activity {
                     + Math.round(Math.max(travelled[dir], travelFor(end - heldSince[dir]))) + "px");
         }
         return true;
+    }
+
+    // ---------------------------------------------------------------- snap navigation
+
+    /**
+     * Snap mode: arrows move snap.js's focus ring, OK taps the focused element, holding OK switches
+     * to the pointer. Directions as for the pointer: 0 left, 1 right, 2 up, 3 down.
+     */
+    private boolean onSnapKey(KeyEvent e) {
+        final int code = e.getKeyCode();
+        final boolean isDown = e.getAction() == KeyEvent.ACTION_DOWN;
+        final boolean first = isDown && e.getRepeatCount() == 0;
+        if (isOk(code)) {
+            // Click on release, so a long press can mean "pointer" instead.
+            if (first) {
+                okCode = code;
+                ui.removeCallbacks(okLongPress);
+                ui.postDelayed(okLongPress, LONG_PRESS_MS);
+            } else if (!isDown && okCode == code) {
+                disarmOk();
+                snapSend(SNAP_OK, false);
+            }
+            return true;
+        }
+        if (!isDown) {
+            // Released: a held key's repeat still waiting for the page must not move once more
+            // (a tap waiting behind a slow move still counts).
+            dropSnapRepeats();
+            return true;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (!first && now - lastSnapMove < SNAP_REPEAT_MS) return true;
+        int dir = code == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1
+                : code == KeyEvent.KEYCODE_DPAD_UP ? 2 : 3;
+        snapSend(dir, !first);
+        return true;
+    }
+
+    private void disarmOk() {
+        okCode = 0;
+        ui.removeCallbacks(okLongPress);
+    }
+
+    /** Leaving snap mode (pointer, video): presses still waiting were meant for the ring. */
+    private void cancelSnapInput() {
+        disarmOk();
+        snapQueue.clear();
+    }
+
+    private final Runnable okLongPress = () -> {
+        if (okCode == 0 || cursor.getVisibility() == View.VISIBLE || inPlayerView()) {
+            okCode = 0;
+            return;
+        }
+        swallowKey = okCode;   // the release must not click
+        okCode = 0;
+        snapCall("'pointer',true", r -> {
+            if (r != null && r.has("x")) {
+                float k = cssToView(r);
+                cursor.moveTo(r.optInt("x") * k, r.optInt("y") * k);
+            }
+            showPointer();
+            osd("Pointer · OK click · hides after 10 s, then the D-pad jumps again");
+        });
+    };
+
+    /**
+     * Runs a snap command (a direction 0-3, SNAP_OK, SNAP_PAGE_UP/DOWN), one at a time: the page answers
+     * slower than the remote repeats, so presses wait their turn in order. A held key keeps only its latest
+     * repeat waiting.
+     */
+    private void snapSend(int cmd, boolean repeat) {
+        if (snapBusy) {
+            int[] tail = snapQueue.peekLast();
+            if (repeat && tail != null && tail[1] == 1) snapQueue.pollLast();
+            if (snapQueue.size() < 4) snapQueue.add(new int[]{cmd, repeat ? 1 : 0});
+            return;
+        }
+        snapBusy = true;
+        if (cmd < 4) {
+            lastSnapMove = SystemClock.uptimeMillis();
+            snapCall("'move'," + cmd, r -> onSnapMoved(cmd, r));
+        } else if (cmd == SNAP_OK) {
+            snapActivate();
+        } else {
+            snapCall("'page'," + (cmd == SNAP_PAGE_UP ? -1 : 1), r -> onSnapMoved(cmd == SNAP_PAGE_UP ? 2 : 3, r));
+        }
+    }
+
+    /** The call in flight is done: run the next press that waited for it. */
+    private void snapIdle() {
+        snapBusy = false;
+        int[] next = snapQueue.poll();
+        if (next != null) snapSend(next[0], next[1] == 1);
+    }
+
+    private void dropSnapRepeats() {
+        for (Iterator<int[]> it = snapQueue.iterator(); it.hasNext(); ) {
+            if (it.next()[1] == 1) it.remove();
+        }
+    }
+
+    private void onSnapMoved(int dir, org.json.JSONObject r) {
+        if (r == null) {
+            // No snap.js on this page yet (still loading): ▲ ▼ scroll a little instead.
+            if (dir >= 2 && web.getWidth() > 0) {
+                scrollAt(web.getWidth() / 2f, web.getHeight() / 2f, 0, (dir == 2 ? -1 : 1) * web.getHeight() * 0.25f);
+            }
+        }
+        snapIdle();
+    }
+
+    /** OK: tap what the ring is on. Busy until the tap is sent, so a press after it can't move the page first. */
+    private void snapActivate() {
+        snapCall("'activate'", r -> {
+            String kind = r == null ? "" : r.optString("r");
+            if ("tap".equals(kind)) {
+                float k = cssToView(r);
+                tapWeb(r.optInt("x") * k, r.optInt("y") * k, this::snapIdle);
+                return;
+            }
+            snapIdle();
+            if ("player".equals(kind)) {
+                // The video itself: fill the screen with it and make sure it plays.
+                setTheater(true);
+                player("PLAY", 0, 0, null);
+            }
+        });
+    }
+
+    /** The answer to a snap call the page didn't answer in time: no result fields, so nothing was handled. */
+    private static final org.json.JSONObject SNAP_TIMED_OUT = new org.json.JSONObject();
+
+    /**
+     * Calls window.__hitvSnap(args) in the page; the callback gets its result object, null if the page has no
+     * snap.js yet, or SNAP_TIMED_OUT after SNAP_TIMEOUT_MS without an answer (a hung page or a rebuilt WebView
+     * must not leave the remote dead: BACK still works, the arrows unlock).
+     */
+    private void snapCall(String args, final SnapResult cb) {
+        final boolean[] done = {false};
+        final Runnable timeout = () -> {
+            if (done[0]) return;
+            done[0] = true;
+            Log.w(TAG, "snap " + args + ": no answer from the page");
+            if (cb != null) cb.on(SNAP_TIMED_OUT);
+        };
+        ui.postDelayed(timeout, SNAP_TIMEOUT_MS);
+        web.evaluateJavascript("window.__hitvSnap?window.__hitvSnap(" + args + "):null", json -> {
+            if (done[0]) return;
+            done[0] = true;
+            ui.removeCallbacks(timeout);
+            org.json.JSONObject r = null;
+            if (json != null && json.startsWith("{")) {
+                try {
+                    r = new org.json.JSONObject(json);
+                } catch (org.json.JSONException ignored) {
+                }
+            }
+            if (BuildConfig.DEBUG) Log.d(TAG, "snap " + args + " -> " + json);
+            if (cb != null) cb.on(r);
+        });
+    }
+
+    private interface SnapResult {
+        void on(org.json.JSONObject r);
+    }
+
+    /** CSS px (snap.js reports viewport coordinates and its innerWidth as "w") to WebView px. */
+    private float cssToView(org.json.JSONObject r) {
+        double w = r.optDouble("w", 0);
+        return w > 0 ? (float) (web.getWidth() / w) : 1f;
+    }
+
+    /** A finger tap on the page at WebView coordinates: the same real input a pointer click sends. */
+    private void tapWeb(final float x, final float y, final Runnable sent) {
+        final long down = SystemClock.uptimeMillis();
+        MotionEvent ev = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0);
+        ev.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        web.dispatchTouchEvent(ev);
+        ev.recycle();
+        ui.postDelayed(() -> {
+            MotionEvent up = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+            up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            web.dispatchTouchEvent(up);
+            up.recycle();
+            sent.run();
+        }, TAP_MS);
     }
 
     /** Pixels a press held for {@code ms} moves the pointer: the integral of the speed ramp. */
@@ -955,9 +1186,10 @@ public class MainActivity extends Activity {
         web.evaluateJavascript(String.format(Locale.US, SCROLL_JS, web.getWidth(), x, y, dx, dy), null);
     }
 
-    private void scrollPage(int direction) {
+    private void scrollPage(int direction, boolean repeat) {
         if (inPlayerView()) return;
-        scrollAt(cursor.cursorX(), cursor.cursorY(), 0, direction * web.getHeight() * 0.8f);
+        if (cursor.getVisibility() != View.VISIBLE) snapSend(direction < 0 ? SNAP_PAGE_UP : SNAP_PAGE_DOWN, repeat);
+        else scrollAt(cursor.cursorX(), cursor.cursorY(), 0, direction * web.getHeight() * 0.8f);
     }
 
     private void touch(int action) {
@@ -988,8 +1220,20 @@ public class MainActivity extends Activity {
     }
 
     private void showPointer() {
+        cancelSnapInput();
+        if (cursor.getVisibility() != View.VISIBLE) snapCall("'pointer',true", null);   // hides the focus ring
         cursor.setVisibility(View.VISIBLE);
         lastPointerActivity = SystemClock.uptimeMillis();
+    }
+
+    /** Back to snap mode; the focus ring comes back, on whatever the pointer was over if it was showing. */
+    private void resumeSnap(boolean fromPointer) {
+        if (fromPointer) {
+            snapCall(String.format(Locale.US, "'pointer',false,%.0f,%.0f,%d",
+                    cursor.cursorX(), cursor.cursorY(), web.getWidth()), null);
+        } else {
+            snapCall("'pointer',false", null);
+        }
     }
 
     private void hidePointer() {
@@ -1003,7 +1247,10 @@ public class MainActivity extends Activity {
         public void run() {
             long idle = SystemClock.uptimeMillis() - lastPointerActivity;
             long limit = inPlayerView() ? HIDE_POINTER_PLAYER_MS : HIDE_POINTER_BROWSE_MS;
-            if (cursor.getVisibility() == View.VISIBLE && !touching && !moving && idle > limit) hidePointer();
+            if (cursor.getVisibility() == View.VISIBLE && !touching && !moving && idle > limit) {
+                hidePointer();
+                if (!inPlayerView()) resumeSnap(true);
+            }
             ui.postDelayed(this, 500);
         }
     };

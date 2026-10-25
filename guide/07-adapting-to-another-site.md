@@ -28,23 +28,24 @@ test ! -e keystore && ! find . -name '*.jks' -o -name '*.password' | grep -q . &
 | Icon + banner | `res/mipmap-*/ic_launcher.png`, `res/drawable-xhdpi/banner.png` (320×180) | Original artwork (04) |
 | APK name, key alias, default key path | `build.sh` (`APK=` :29–30, `KS=` default :59, `-alias` :71, `--ks-key-alias` :76) | Each app gets its own key |
 | Version | `android:versionCode`/`versionName` in the manifest **and** `VERSION_CODE`/`VERSION_NAME` in `build.sh` | The manifest values win (04) |
-| `HOME_URL` | MainActivity.java:54 | Start page |
-| `mainHosts` seed | MainActivity.java:150 | Every domain the **main frame** may show |
-| `SITE_DOMAIN` | MainActivity.java:58 | Regex for domains the site may move to (learned only from https redirects off a site host) |
-| `AUTH_HOSTS` + `/auth/social/` prefix | MainActivity.java:61, :376 | The site's sign-in providers and its OAuth start path; empty the array if there's no social login |
-| `/sw.js` kill switch | MainActivity.java:408 | The site's service-worker path, if any |
-| `/watch/` in `backSteps` | MainActivity.java:1025 | The path whose pushState entries BACK should skip |
-| `TV_LAYOUT_WIDTH` | MainActivity.java:56 | The narrowest width at which the site shows its desktop layout |
-| `HELP_TEXT`, colour keys | MainActivity.java:82, `dispatchKeyEvent` :732 | e.g. BLUE "skip 85 s" assumes anime openings |
+| `HOME_URL` | MainActivity.java:56 | Start page |
+| `mainHosts` seed | MainActivity.java:172 | Every domain the **main frame** may show |
+| `SITE_DOMAIN` | MainActivity.java:60 | Regex for domains the site may move to (learned only from https redirects off a site host) |
+| `AUTH_HOSTS` + `/auth/social/` prefix | MainActivity.java:63, :399 | The site's sign-in providers and its OAuth start path; empty the array if there's no social login |
+| `/sw.js` kill switch | MainActivity.java:431 | The site's service-worker path, if any |
+| `/watch/` in `backSteps` | MainActivity.java:1272 | The path whose pushState entries BACK should skip |
+| `TV_LAYOUT_WIDTH` | MainActivity.java:58 | The narrowest width at which the site shows its desktop layout |
+| `HELP_TEXT`, colour keys | MainActivity.java:94, `dispatchKeyEvent` :760 | e.g. BLUE "skip 85 s" assumes anime openings |
 | `NEVER_BLOCK` | AdBlocker.java:37 | Site, every player host, library CDNs the player needs |
 | `AD_PATH` / `AD_QUERY` / `MEDIA_PATH` | AdBlocker.java:43, :50, :53 | Fixed-name ad loaders of **your** networks; test each regex against your player and CDN URLs for false positives; adapt the media-path shape to your CDN |
 | `curated.txt` | `assets/adblock/` | Observed ad/tracker hosts from your ledger; keep the generic network block |
 | `hosts.txt` exclusions | regenerate (04) | Exclude your required hosts |
 | `PLAYER_ORIGIN`, `BRIDGE_ORIGIN` | inject.js:24–25 | All player hosts / those that speak your bridge protocol |
-| Player slot selector | `findPlayer` inject.js:115 (`.player-frame iframe`) | The site's player container |
-| Bridge messages | `__hitvCmd` inject.js:203–216, `probePlaying` :175 | See §3 |
-| Progress-message shapes | inject.js:166–168 | Drives keep-awake and idempotent Play/Pause for non-bridge players |
-| Promo CSS | inject.js:62–66 | Ad slots in the site's own HTML; keep the z-index rules (:67–68) |
+| Player slot selector | `findPlayer` inject.js:117 (`.player-frame iframe`) | The site's player container |
+| Bridge messages | `__hitvCmd` inject.js:206–219, `probePlaying` :178 | See §3 |
+| Progress-message shapes | inject.js:169–171 | Drives keep-awake and idempotent Play/Pause for non-bridge players |
+| Promo CSS | inject.js:62–68 | Ad slots in the site's own HTML; keep the z-index rules (:69–70) |
+| Snap navigation site table | `SITE` at the top of `assets/snap.js` | Click targets the generic query misses (div buttons: find them with `getEventListeners` or the `cursor:pointer` scan), decoys to `skip`, the `scopes` that take the remote while open (dialogs, side menus, dropdowns) and how `back()` closes each, `start` targets per page type, `card`/`cardMain` (one stop per card), `groups`, `then` (opener → what it opens). Also the player-origin regex in `isPlayer` (a fallback copy of `PLAYER_ORIGIN`). See 03 §5c |
 
 ## 3. Discover a player's control protocol
 
@@ -53,7 +54,7 @@ test ! -e keystore && ! find . -name '*.jks' -o -name '*.password' | grep -q . &
    `action`, `method`) and values it switches on, whether it checks `event.origin`, and whether it accepts
    strings, objects, or both.
 3. Find `postMessage(` to see what the player reports (progress, ready, ended). Feed the progress shapes to
-   inject.js:166–168 and to a `probePlaying`-style state query if there's a "get time/state" command.
+   inject.js:169–171 and to a `probePlaying`-style state query if there's a "get time/state" command.
 4. Look for a fullscreen bridge (`requestFullscreen`, `setFullscreen`, a parent handshake such as `megaCommand`).
    If the parent must answer for the bridge to activate, don't answer; native fullscreen then reaches `onShowCustomView`.
 5. Without a bridge: jwplayer in the iframe takes the keyboard (Space, ←/→, `f`, `m`) through the `frame` fallback.
@@ -73,6 +74,11 @@ Run 05 §7 in full, plus:
       fire once per frequency-cap window: clear app data and retry.
 - [ ] Sign-in, search (on-screen keyboard) and dropdowns work with the pointer; sign-in reaches the provider and
       returns; a direct jump to the provider from an ad is blocked.
+- [ ] Snap navigation on every page type (home, lists, detail, watch, search, filter): the ring starts somewhere
+      sensible, every control can be reached with the arrows alone, carousels slide, side menus and dialogs keep
+      the ring inside and BACK closes them (back on the opener even after an OK inside), history back puts the
+      ring on the card you opened. A button that replaces itself on click (More/Less, a range picker) gets a
+      `then` pair, so the ring doesn't land on whatever took its place.
 - [ ] Fullscreen from the player's own button; BACK exits; theater mode as fallback, including after the site
       swaps the player.
 - [ ] Cold start with an existing service-worker registration loads normally.
@@ -102,6 +108,10 @@ this found 13 issues (12 distinct); all were fixed and re-verified. The items be
 - [ ] Media URLs can never be blocked by the generic list; required hosts are in `NEVER_BLOCK`.
 
 ### Remote
+- [ ] Snap: no `scrollIntoView()`/`focus()` anywhere near carousels; hidden, clipped, covered and decoy targets
+      are never focused; a move on the heaviest page stays well under 100 ms at 6× CPU throttling; held keys
+      don't pile up moves (one in flight, repeats dropped on release) while taps and OK wait their turn in order;
+      OK sends a real tap (user activation).
 - [ ] Separate Play and Pause keys are **idempotent** (state probe, not a blind toggle).
 - [ ] Pointer distance comes from hold time, with stale-timestamp clamps and a per-frame cap: no jumps after UI
       stalls, taps always move.
@@ -130,8 +140,10 @@ this found 13 issues (12 distinct); all were fixed and re-verified. The items be
 >    or any key or password file.** Change everything in 07 §2, using only hosts from your ledger for
 >    `curated.txt` and `NEVER_BLOCK`.
 > 4. Find the player's postMessage protocol per 07 §3 and wire it into `window.__hitvCmd` in `inject.js`.
-> 5. Build with `./build.sh debug` and test in the headless Android TV emulator per 05: pointer (debug `keytest`
->    hook), clicks, pop-ups blocked with `--ez no_blocklist true`, video plays (check the player's own state),
+>    Fill the `SITE` table in `assets/snap.js` from the same recon (03 §5c).
+> 5. Build with `./build.sh debug` and test in the headless Android TV emulator per 05: snap navigation on every
+>    page type, the pointer (hold OK; debug `keytest` hook), clicks, pop-ups blocked with `--ez no_blocklist true`,
+>    video plays (check the player's own state),
 >    fullscreen, media keys, BACK. Inspect the WebView over CDP and the app log to confirm no ad hosts load.
 >    Run lint for API <n>.
 > 6. Run the four-lens review in 07 §5 and fix what it finds.

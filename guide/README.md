@@ -4,8 +4,8 @@ This guide lets another AI model (or a person) repeat the conversion done for
 **hianime.dk → "HiAnime TV"**: a Gradle-free Android WebView app that
 
 - removes the site's ads, popunders, redirects and trackers, and
-- is usable with a **TV remote** (virtual D-pad pointer, media keys, fullscreen video,
-  desktop layout scaled to the TV, Android TV launcher banner).
+- is usable with a **TV remote** (snap navigation like a TV app, with a D-pad pointer as fallback, media keys,
+  fullscreen video, desktop layout scaled to the TV, Android TV launcher banner).
 
 The reference implementation is the project this folder lives in: `/home/deep/hianime-tv`.
 
@@ -54,6 +54,7 @@ The reference implementation is the project this folder lives in: `/home/deep/hi
 |---|---|
 | `build.sh` pipeline and key handling | `HOME_URL`, `mainHosts` seed, `SITE_DOMAIN`, `AUTH_HOSTS` (`MainActivity.java`) |
 | `CursorView.java`, pointer timing model, key map | `NEVER_BLOCK`, `AD_PATH` patterns (`AdBlocker.java`) |
+| `snap.js` engine: targets, FocusFinder rules, scrolling, carousels, layers, ring | The `SITE` table at the top of `snap.js` |
 | Pop-up probe, navigation guard, 204 POST catch, crash-loop guard | `assets/adblock/curated.txt` |
 | Service-worker kill switch, stall watchdog, re-injection schedule | `/sw.js` path, `/watch/` path in `backSteps` |
 | `inject.js`: dead `window.open`, overlay sweeper, viewport pinning, theater CSS, `__hitvCmd` dispatch | `PLAYER_ORIGIN` / `BRIDGE_ORIGIN`, `.player-frame`, promo CSS, progress-message shapes (`inject.js`) |
@@ -84,3 +85,4 @@ The reference implementation is the project this folder lives in: `/home/deep/hi
 - A 4-lens adversarial review (compat, adblock, remote, security) found 13 issues (12 distinct). All were fixed
   and re-verified.
 - Target TV: Sony BRAVIA 4K GB, Android 9, WebView 138.0.7204.179 (06).
+- **1.1** adds snap navigation (03 §5c) as the default, with the pointer as fallback.

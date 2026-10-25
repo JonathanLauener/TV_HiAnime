@@ -56,6 +56,16 @@ adb shell am start -n tv.hianime.wrapper/.MainActivity --es keytest "R200,D200,L
 | `adb emu event send …` | **doesn't work** | keys don't reach the app on the android-tv image |
 | **Debug `keytest` hook** | hold timing, acceleration, jank | replays D-pad presses through `dispatchKeyEvent` with real timestamps. Syntax: `<L|R|U|D|C><hold ms>[j<UI-stall ms>]`, comma-separated. |
 
+Snap mode logs every page answer in debug builds (`snap 'move',3 -> {"r":"moved",…,"d":"a.film-poster \"One Piece\""}`),
+so `adb logcat -s HiAnimeTV:*` shows which element each press reached. `keytest` steps work in snap mode too
+(`C700` holds OK past the long press and switches to the pointer).
+
+**Fast pre-check without a device:** `snap.js` only needs a page laid out like the TV. Headless Chromium with a
+1280×720 window (CSS px; screenshots at device scale 1.5 = 1920×1080), the app's blocklists applied as request
+routing, and `inject.js` + `snap.js` evaluated on `domcontentloaded`/`load` reproduces it closely. Drive
+`window.__hitvSnap('move', dir)` / `('activate')` and click at the returned `x, y`. It finds most logic bugs in
+seconds; the TV is still needed for taps, the on-screen keyboard, timing and the look from the sofa.
+
 Read the pointer from the log, not from screenshots:
 
 ```
@@ -173,6 +183,13 @@ WebView 138.0.7204.179) were checked over network ADB.
 |---|---|
 | Appears in the TV launcher with banner | `dumpsys package` LEANBACK; launcher screenshot |
 | Desktop layout fits one screen (episode list, player bar, server buttons) | screenshot; viewport `width=1280, …scale=0.75` |
+| Snap: ring starts on the player (watch), Watch Now (home/detail), first card (lists) | screenshot after load |
+| Snap: arrows reach every control; carousels slide; ▼ then ▲ returns; grid keeps its column | `snap … ->` log lines |
+| Snap: OK opens links, toggles, dropdowns; on a text box the keyboard opens; on the video → theater + play | |
+| Snap: side menu / dialog / dropdown / search suggestions keep the ring inside; BACK closes them, ring back on the opener (also after an OK inside: a tab in the dialog, the search box) | |
+| Snap: ▼ ▼ OK pressed fast on the watch page: two moves, then the click (nothing dropped) | `snap … ->` log lines |
+| Snap: hold OK → pointer at the ring; 10 s idle → ring back at the pointer | |
+| Snap: history back puts the ring on the card you opened | |
 | Cold start loads (no stalled empty page) | stall watchdog log `page stalled, reloading` should be rare |
 | Pointer: tap ~6 dp, holds accelerate, stalls don't jump | `keytest` + `pointer at`/`release` log lines |
 | Edge push and CH+/− scroll | |

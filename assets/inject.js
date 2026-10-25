@@ -63,7 +63,9 @@
     '.aniwatch-banner-wrap,' +                    // "Visit Aniwatch.rest" cross-promo on watch pages
     'ins.adsbygoogle,' +
     'iframe[src*="doubleclick.net"],iframe[src*="googlesyndication.com"],' +
-    '.sharethis-inline-share-buttons,#st-1,' +
+    // The share bars: the site re-renders ShareThis buttons inside .sharethis-inline-share-buttons and
+    // forces that box to display:flex!important, so hide the whole bar (every button opens a foreign window).
+    '.sharethis-inline-share-buttons,#st-1,.share-buttons,' +
     'body>[style*="z-index: 2147483"]:not([data-hitv]),html>[style*="z-index: 2147483"]:not([data-hitv]),' +
     'body>[style*="z-index:2147483"]:not([data-hitv]),html>[style*="z-index:2147483"]:not([data-hitv])' +
     '{display:none!important}' +
@@ -125,6 +127,7 @@
     }
     return area >= 40000 ? best : null;
   }
+  window.__hitvFindPlayer = findPlayer;   // snap.js: OK on the video opens theater mode
 
   // Theater mode survives the site swapping the player iframe (new episode/server, auto-next).
   function keepTheaterTarget() {

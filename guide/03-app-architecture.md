@@ -27,7 +27,7 @@ Reference files (line numbers checked against the final code, 2026-10-25):
 
 ## 1. Network ad defence
 
-All page subresources and service-worker fetches go through `intercept()` (MainActivity.java:407),
+All page subresources and service-worker fetches go through `intercept()` (MainActivity.java:430),
 which answers the site's `/sw.js` itself (below) and otherwise asks `AdBlocker.shouldBlock`
 (AdBlocker.java:88).
 
@@ -46,7 +46,7 @@ Replies:
   current page; an empty 200 had replaced the page with a blank document.
 
 `setListsEnabled(false)` (:75) turns layers 1–3 off. It's only reachable from debug builds
-(`--ez no_blocklist true`, MainActivity.java:142) and exists to test the behaviour guards in §2 on their own.
+(`--ez no_blocklist true`, MainActivity.java:163) and exists to test the behaviour guards in §2 on their own.
 
 ### Service worker: neutralised
 
@@ -57,9 +57,9 @@ The site's PWA worker (`/sw.js`, a network-first passthrough) stalled a cold-sta
 |---|---|
 | `navigator.serviceWorker.register` stubbed to reject | inject.js:13 |
 | Existing registrations unregistered | inject.js:48 |
-| App answers `/sw.js` on a site host with a kill-switch worker (`skipWaiting`, then `registration.unregister()`, no fetch handler) | `SW_KILL_SWITCH` MainActivity.java:403, served in `intercept` :408 |
-| `ServiceWorkerController` client (API 24+) runs the same `intercept()` for any worker fetch | MainActivity.java:297 |
-| 30 s stall watchdog: a page whose `documentElement.innerHTML` is still empty gets **one** reload per URL | `stallCheck` :513, scheduled in `onPageStarted` :451 |
+| App answers `/sw.js` on a site host with a kill-switch worker (`skipWaiting`, then `registration.unregister()`, no fetch handler) | `SW_KILL_SWITCH` MainActivity.java:426, served in `intercept` :431 |
+| `ServiceWorkerController` client (API 24+) runs the same `intercept()` for any worker fetch | MainActivity.java:320 |
+| 30 s stall watchdog: a page whose `documentElement.innerHTML` is still empty gets **one** reload per URL | `stallCheck` :536, scheduled in `onPageStarted` :474 |
 
 ## 2. Behaviour-based pop-up and redirect defence (domain-agnostic)
 
@@ -68,21 +68,21 @@ POST form, off-site `target=_blank` and the about:blank-iframe `window.open` wer
 
 | Vector | Defence | Where |
 |---|---|---|
-| `window.open`, incl. the fresh-`about:blank`-iframe `contentWindow.open` fallback | `setSupportMultipleWindows(true)` + `setJavaScriptCanOpenWindowsAutomatically(false)` route every new window to `onCreateWindow`. It hands the page a **probe WebView** whose fetches are all answered empty (:583), reads its first http(s) URL, and loads it in the main view **only** if it's a main-site host **and** a user gesture; otherwise "Blocked a pop-up". A 5 s timer disposes it (:592). The probe handles `onRenderProcessGone` (:564): all WebViews share one renderer, and an unhandled exit would kill the app on API 26+. | MainActivity.java:276, :538 |
-| `location.href = adUrl` (anchor-click hijack, mouseout exit redirect) | `guardNavigation` (:343): the main frame may show only `mainHosts` (plus the sign-in rule below). Non-http schemes (`intent:`, `market:`, …) are blocked in the main frame; frames may use only `about:`/`blob:`/`data:`/`javascript:` | `Client.shouldOverrideUrlLoading` :417 |
-| `form.submit()` POST navigations (never reach `shouldOverrideUrlLoading`) | `shouldInterceptRequest` with `isForMainFrame()` to a host that is neither a site nor an auth host → **204** | :429–436 |
-| Cleartext site URLs | Main-frame `http://` on a site host is re-requested as `https://` | :359 |
-| Site moves to a new domain | Learned only from an **https server redirect off a known site host** to a host matching `SITE_DOMAIN` `^(www\.)?hianime[a-z0-9-]*\.[a-z]{2,}(\.[a-z]{2})?$`; persisted as `main_hosts` | `SITE_DOMAIN` :58, :367, `rememberMainHost` :317 |
-| Social sign-in | `AUTH_HOSTS` (`discord.com`, `accounts.google.com`, `myanimelist.net`, `anilist.co`) are allowed in the main frame **only** via a redirect from the site's `/auth/social/…`, or while already on a provider. `pendingMainUrl` tracks where the current navigation came from (set on allowed navigations, reset in `onPageStarted` :445). Verified: AniList sign-in reaches `anilist.co/login`; a direct ad-style jump to a provider stays blocked. | `AUTH_HOSTS` :61, :373–386, `isAuthHost` :393 |
+| `window.open`, incl. the fresh-`about:blank`-iframe `contentWindow.open` fallback | `setSupportMultipleWindows(true)` + `setJavaScriptCanOpenWindowsAutomatically(false)` route every new window to `onCreateWindow`. It hands the page a **probe WebView** whose fetches are all answered empty (:609), reads its first http(s) URL, and loads it in the main view **only** if it's a main-site host **and** a user gesture; otherwise "Blocked a pop-up". A 5 s timer disposes it (:618). The probe handles `onRenderProcessGone` (:590): all WebViews share one renderer, and an unhandled exit would kill the app on API 26+. | MainActivity.java:299, :564 |
+| `location.href = adUrl` (anchor-click hijack, mouseout exit redirect) | `guardNavigation` (:366): the main frame may show only `mainHosts` (plus the sign-in rule below). Non-http schemes (`intent:`, `market:`, …) are blocked in the main frame; frames may use only `about:`/`blob:`/`data:`/`javascript:` | `Client.shouldOverrideUrlLoading` :440 |
+| `form.submit()` POST navigations (never reach `shouldOverrideUrlLoading`) | `shouldInterceptRequest` with `isForMainFrame()` to a host that is neither a site nor an auth host → **204** | :452–459 |
+| Cleartext site URLs | Main-frame `http://` on a site host is re-requested as `https://` | :382 |
+| Site moves to a new domain | Learned only from an **https server redirect off a known site host** to a host matching `SITE_DOMAIN` `^(www\.)?hianime[a-z0-9-]*\.[a-z]{2,}(\.[a-z]{2})?$`; persisted as `main_hosts` | `SITE_DOMAIN` :60, :390, `rememberMainHost` :340 |
+| Social sign-in | `AUTH_HOSTS` (`discord.com`, `accounts.google.com`, `myanimelist.net`, `anilist.co`) are allowed in the main frame **only** via a redirect from the site's `/auth/social/…`, or while already on a provider. `pendingMainUrl` tracks where the current navigation came from (set on allowed navigations, reset in `onPageStarted` :468). Verified: AniList sign-in reaches `anilist.co/login`; a direct ad-style jump to a provider stays blocked. | `AUTH_HOSTS` :63, :396–409, `isAuthHost` :416 |
 
-Feedback goes to the OSD, rate-limited to one notice per 4 s (`noteBlocked` :331).
+Feedback goes to the OSD, rate-limited to one notice per 4 s (`noteBlocked` :354).
 
 ## 3. Injected page script (`assets/inject.js`, ES5 on purpose)
 
 ### Injection schedule
-`inject()` (MainActivity.java:523) runs `window.__hitvViewport=<n>;` plus the script at
-`onPageStarted`, **+0.5 s**, **+1.5 s** (`injectRunnable` :509, scheduled :448–450) and `onPageFinished`
-(:457). Injection is **main frame only**: `evaluateJavascript` can't reach cross-origin iframes. Without
+`inject()` (MainActivity.java:546) runs `window.__hitvViewport=<n>;` plus the script at
+`onPageStarted`, **+0.5 s**, **+1.5 s** (`injectRunnable` :532, scheduled :471–473) and `onPageFinished`
+(:480). Injection is **main frame only**: `evaluateJavascript` can't reach cross-origin iframes. Without
 AndroidX there's no document-start injection, so the network layer is the first defence and this is the second.
 
 **Guard rule (a bug fixed in review).** The cheap, repeatable parts (dead `window.open`, SW stub, viewport
@@ -94,20 +94,20 @@ anyway, so the CSS and sweeper never installed.
 |---|---|---|
 | Dead `window.open` | :5, :9 | Returns a fake closed window so ad scripts don't retry or crash |
 | SW neutraliser | :13, :48 | See §1 |
-| TV viewport | :32 (`fixViewport`), :56–57, re-run on every injection (:20) and when a `<meta>` is added (:146) | See §4 |
-| CSS | :62 | Hides in-HTML ad slots (`.aniwatch-banner-wrap` promo, `ins.adsbygoogle`, share widget); **`body>`/`html>` children with an inline `z-index: 2147483…` → `display:none`** (:67–68); focus ring; theater-mode rules (:74–78) |
-| Overlay sweeper | `isAdOverlay` :94, `sweep` :102, MutationObserver :137, `sweepTop` every 2 s :154 | Removes `position:fixed/absolute` elements with computed `z-index ≥ 2147483000` (`OVERLAY_Z` :26) among added nodes and top-level children; skips `data-hitv` and the fullscreen element. **No size check:** the popunder's interstitial is mounted at 0×0 and grown later via inline style. Verified with a synthetic 0×0-then-grown overlay. |
-| Player finder | `findPlayer` :114 | `.player-frame iframe` → first iframe on a `PLAYER_ORIGIN` (:24) → largest non-overlay iframe ≥ 40 000 px² |
-| Player commands | `window.__hitvCmd` :203 | §7 |
-| Theater mode | `window.__hitvTheater` :237, `keepTheaterTarget` :130 | §6 |
-| Playback tracking | message listener :160, `window.__hitvRecentlyPlaying` :256 | §8 |
+| TV viewport | :32 (`fixViewport`), :56–57, re-run on every injection (:20) and when a `<meta>` is added (:149) | See §4 |
+| CSS | :62 | Hides in-HTML ad slots (`.aniwatch-banner-wrap` promo, `ins.adsbygoogle`, share widget); **`body>`/`html>` children with an inline `z-index: 2147483…` → `display:none`** (:69–70); focus ring; theater-mode rules (:76–80) |
+| Overlay sweeper | `isAdOverlay` :96, `sweep` :104, MutationObserver :140, `sweepTop` every 2 s :157 | Removes `position:fixed/absolute` elements with computed `z-index ≥ 2147483000` (`OVERLAY_Z` :26) among added nodes and top-level children; skips `data-hitv` and the fullscreen element. **No size check:** the popunder's interstitial is mounted at 0×0 and grown later via inline style. Verified with a synthetic 0×0-then-grown overlay. |
+| Player finder | `findPlayer` :116 | `.player-frame iframe` → first iframe on a `PLAYER_ORIGIN` (:24) → largest non-overlay iframe ≥ 40 000 px² |
+| Player commands | `window.__hitvCmd` :206 | §7 |
+| Theater mode | `window.__hitvTheater` :240, `keepTheaterTarget` :133 | §6 |
+| Playback tracking | message listener :163, `window.__hitvRecentlyPlaying` :259 | §8 |
 
 ES5 because the TV may run an old WebView. The site itself needs a modern one (05 §6).
 
 ## 4. TV layout: desktop width, pinned scale
 
-The app passes `window.__hitvViewport=1280` (`TV_LAYOUT_WIDTH` MainActivity.java:56) **only when
-`UiModeManager` reports `UI_MODE_TYPE_TELEVISION`** (:147–149); phones and tablets get `0` and keep the site's
+The app passes `window.__hitvViewport=1280` (`TV_LAYOUT_WIDTH` MainActivity.java:58) **only when
+`UiModeManager` reports `UI_MODE_TYPE_TELEVISION`** (:168–170); phones and tablets get `0` and keep the site's
 own viewport. `fixViewport` (inject.js:32) then rewrites the last `<meta name=viewport>` to
 
 ```
@@ -120,39 +120,43 @@ player with its control bar, server buttons) fits on one screen.
 **Why pin the scale:** WebView sized the page for its first, empty layout (980 px) and, with zoom disabled,
 never refit when the viewport changed later. Pinning initial = min = max forces the right scale.
 
-## 5. WebView settings worth copying (`configureWebView` MainActivity.java:265)
+## 5. WebView settings worth copying (`configureWebView` MainActivity.java:288)
 
 - JS, DOM storage, database on; `setMediaPlaybackRequiresUserGesture(false)`.
 - Wide viewport + overview mode; zoom off (the scale comes from §4).
-- `MIXED_CONTENT_COMPATIBILITY_MODE`; file/content access off; geolocation off; permission requests denied (:631).
-- UA: strip `; wv` and `Version/x.y` so players that refuse WebViews see plain Chrome (:283).
-- Third-party cookies on: the player iframes keep their own state (:287).
+- `MIXED_CONTENT_COMPATIBILITY_MODE`; file/content access off; geolocation off; permission requests denied (:658).
+- UA: strip `; wv` and `Version/x.y` so players that refuse WebViews see plain Chrome (:306).
+- Third-party cookies on: the player iframes keep their own state (:310).
 - **No `addJavascriptInterface`**: nothing native is exposed to page or ad frames. Playback state is polled instead (§8).
-- `getDefaultVideoPoster` returns a 1×1 bitmap: no grey play-icon placeholder (:626).
-- Remote debugging only in debug builds (`BuildConfig.DEBUG`, :153).
+- `getDefaultVideoPoster` returns a 1×1 bitmap: no grey play-icon placeholder (:653).
+- Remote debugging only in debug builds (`BuildConfig.DEBUG`, :175).
 
-### Renderer crash handling (`onRenderProcessGone` :474)
-- Rebuilds the WebView instead of letting the app die (`recreateWebView` :490).
-- **Crash-loop guard:** the same URL crashing twice within 60 s → `last_url` is set to home and the OSD says so (:479–485).
-- In the background, the WebView is rebuilt but **not loaded** until `onResume` (`pendingLoad`, :499–500, :1101).
+### Renderer crash handling (`onRenderProcessGone` :497)
+- Rebuilds the WebView instead of letting the app die (`recreateWebView` :513).
+- **Crash-loop guard:** the same URL crashing twice within 60 s → `last_url` is set to home and the OSD says so (:502–508).
+- In the background, the WebView is rebuilt but **not loaded** until `onResume` (`pendingLoad`, :522–523, :1348).
 
-### Error page (`showError` :527)
+### Error page (`showError` :553)
 The failing URL goes, HTML-encoded, into a `data-u` attribute. The button's `onclick` is a constant
 (`location.replace(this.getAttribute('data-u'))`), so no URL text is ever spliced into script.
 
-## 5b. Remote control: the pointer
+## 5b. Remote control: the pointer (the fallback since 1.1)
+
+Since 1.1 the D-pad drives **snap navigation** (§5c) by default. The pointer below is still there for
+anything snap can't reach: hold OK for 600 ms (`LONG_PRESS_MS` :78) and it appears where the focus ring was; after
+10 s without a key it hides and the D-pad snaps again, from the element under the pointer.
 
 ### Rendering and input routing
 - `CursorView` draws a 1.4× density arrow (CursorView.java:23); it is not focusable or clickable.
-- `dispatchKeyEvent` (MainActivity.java:732) intercepts the D-pad. An Activity sees keys **after** the IME,
+- `dispatchKeyEvent` (MainActivity.java:760) intercepts the D-pad. An Activity sees keys **after** the IME,
   so the on-screen keyboard still gets the D-pad while it's open.
 - OK = synthetic **touch**: `ACTION_DOWN` on key-down, `ACTION_UP` on key-up, `ACTION_MOVE` while moving
-  (drag works for seek bars) (`touch` :963). Dispatched to the fullscreen custom view if one is showing, else the
-  WebView, with coordinates translated via `getLocationOnScreen` (`dispatchTouch` :977).
+  (drag works for seek bars) (`touch` :1195). Dispatched to the fullscreen custom view if one is showing, else the
+  WebView, with coordinates translated via `getLocationOnScreen` (`dispatchTouch` :1209).
 
 ### Timing model (distance from hold time, never from frame count)
 Speed ramps quadratically from `SPEED_MIN` 2.5 to `SPEED_MAX` 20 dp per 16 ms frame over `SPEED_RAMP_MS` 1 s
-(:64–67). Distance is the **integral** of that ramp (`travelFor` :889):
+(:66–69). Distance is the **integral** of that ramp (`travelFor` :1120):
 
 ```
 t ≤ 1000 ms:  dp = (2.5·t + 17.5·t³ / (3·1000²)) / 16
@@ -162,63 +166,169 @@ px = dp × density
 
 | Rule | Where | Why |
 |---|---|---|
-| Shortest tap counts as 40 ms → ~6 dp | `travelFor` :890 | A tap always moves visibly |
-| On key-down, `heldSince = max(downTime, now − 300 ms)` (`MAX_INPUT_LAG_MS` :69) | :866 | Bogus or stale `downTime` stamps can't produce jumps |
-| While held, the mover counts only time it saw itself, **≤ 50 ms per frame** (`MAX_FRAME_GAP_MS` :70) | `mover` :898–916 | A stalled UI thread never turns into a jump |
-| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :875–884 | Queued key events behind a busy UI thread still move the distance the hold time says |
+| Shortest tap counts as 40 ms → ~6 dp | `travelFor` :1121 | A tap always moves visibly |
+| On key-down, `heldSince = max(downTime, now − 300 ms)` (`MAX_INPUT_LAG_MS` :71) | :910 | Bogus or stale `downTime` stamps can't produce jumps |
+| While held, the mover counts only time it saw itself, **≤ 50 ms per frame** (`MAX_FRAME_GAP_MS` :72) | `mover` :1129–1147 | A stalled UI thread never turns into a jump |
+| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :919–1115 | Queued key events behind a busy UI thread still move the distance the hold time says |
 
 Measured on the emulator with the debug key-replay hook (05 §3): 30 ms → 16 px, 200 → 68, 300 → 113,
 900 → 813, and 200 ms with a 500 ms UI stall → 68 (no jump).
 
 ### Scrolling and hiding
-- Pushing past an edge accumulates scroll (`movePointer` :929), flushed every 48 ms (`flushScroll` :945)
-  through `SCROLL_JS` (:75). That script runs `elementFromPoint` at the pointer, scrolls the nearest scrollable
+- Pushing past an edge accumulates scroll (`movePointer` :1160), flushed every 48 ms (`flushScroll` :1176)
+  through `SCROLL_JS` (:87). That script runs `elementFromPoint` at the pointer, scrolls the nearest scrollable
   ancestor that actually moves, and falls back to `window.scrollBy`. Coordinates are scaled by
-  `innerWidth / view width`, so it stays correct under the §4 scale. CH+/−, PgUp/PgDn scroll 80% (`scrollPage` :958).
-- The pointer auto-hides after 10 s browsing / 3 s over video (`HIDE_POINTER_*` :71–72, `pointerIdleCheck` :1001).
-  When hidden, the first key press only reveals it; the rest of that press is swallowed (`swallowKey`, :830).
+  `innerWidth / view width`, so it stays correct under the §4 scale. CH+/−, PgUp/PgDn scroll 80% (`scrollPage` :1189).
+- The pointer auto-hides after 10 s browsing / 3 s over video (`HIDE_POINTER_*` :73, `pointerIdleCheck` :1245).
+  Hiding it while browsing hands the D-pad back to snap mode (`resumeSnap` :1230), focused on what the
+  pointer was over. Over a video, ▲ ▼ bring it back (below).
 
 ### Player mode
-When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :825, :836–847):
+When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :864, :878–889):
 OK = play/pause, ◀ ▶ = seek ∓10 s (every 3rd key repeat), ▲ ▼ = bring the pointer back to reach the
 player's own buttons.
 
-### Key map (`dispatchKeyEvent` :732)
+### Key map (`dispatchKeyEvent` :760)
 
 | Key | Action |
 |---|---|
-| D-pad / OK | pointer / click (drag while held) |
-| BACK | cancel drag → leave fullscreen → leave theater → history back, **skipping the watch page's pushState episode entries** (`backSteps` :1020) → "press again to exit" (`onBackKey` :1031) |
-| any key while the help card is open | **only closes the card** (BACK included) (:739–742) |
+| D-pad | snap: move the focus ring (§5c). Pointer mode: move the pointer |
+| OK | snap: open the focused item **on release**; **hold** 600 ms → pointer. On the video: theater mode + play. Pointer mode: click (drag while held) |
+| BACK | snap: first let the page close what it has open (search suggestions, dialog, side menu, dropdown, search box, light-off; `snap.js back()`). Then: cancel drag → leave fullscreen → leave theater → history back, **skipping the watch page's pushState episode entries** (`backSteps` :1267) → "press again to exit" (`onBackKey` :1278) |
+| CH +/−, PgUp/PgDn | snap: a screen up/down, the ring stays about where it was on screen. Pointer mode: scroll 80% |
+| any key while the help card is open | **only closes the card** (BACK included) (:767–770) |
 | Play/Pause | toggle |
-| **Play**, **Pause** (separate keys on Sony remotes) | **idempotent** play / pause (:748, :751; §7) |
+| **Play**, **Pause** (separate keys on Sony remotes) | **idempotent** play / pause (:776, :779; §7) |
 | FF / RW | seek ±10 s (holding repeats) |
 | Next / Prev | seek ±60 s |
 | Stop | leave fullscreen/theater |
-| RED (and MENU) | theater on/off (or leave fullscreen) (:769) |
+| RED (and MENU) | theater on/off (or leave fullscreen) (:797) |
 | GREEN | home |
 | YELLOW | reload |
 | BLUE | skip 85 s (intro) |
-| INFO / HELP | controls card with a live "Ads and trackers blocked this session" count (`showHelp` :243, `refreshHelp` :234) |
+| INFO / HELP | controls card with a live "Ads and trackers blocked this session" count (`showHelp` :266, `refreshHelp` :257) |
 
 BACK skip, verified: `?ep=87189` → `/home` in one press. Colour keys are used because Sony BRAVIA remotes
-have no app-visible MENU key (Action Menu is a system overlay). The help card shows once on first launch.
+have no app-visible MENU key (Action Menu is a system overlay). The help card shows once on first launch, and
+once more after the update to 1.1 (`help_seen_v11`), because the controls changed.
+
+## 5c. Remote control: snap navigation (the default since 1.1)
+
+A mouse pointer on a TV remote is slow: every link is a drive across the screen. Snap navigation works like
+YouTube TV: the arrows jump a **focus ring** to the next thing you can click in that direction, OK opens it.
+Java owns the keys and the input it sends to the page; `assets/snap.js` (ES5, injected right after
+`inject.js`) decides what is focusable, which target is next, and draws the ring. They talk only through
+`evaluateJavascript` return values: still no `addJavascriptInterface` (§5).
+
+### Why not WebView's own spatial navigation
+WebView already turns Blink's spatial navigation on by default on devices **without a touchscreen**
+(`AwSettings`: `mSpatialNavigationEnabled = !hasSystemFeature(FEATURE_TOUCHSCREEN)`), i.e. on TVs; there is no
+public switch. It is not usable here (verified in Chromium 153 with `--enable-spatial-navigation`): it skips
+off-screen targets and scrolls 40 px per press, focuses a fixed header after scrolling under it, can't reach
+clipped carousel slides, and never focuses cross-origin iframes (the player). So the app consumes the D-pad and
+the page never sees arrow keys.
+
+### Java side (`onSnapKey` :938)
+
+| What | How | Why |
+|---|---|---|
+| Arrows | `__hitvSnap('move', dir)`; one call in flight, presses that come meanwhile (arrows, OK, CH ±) wait **in order**, at most 4 (`snapSend` :1001); held keys step at most every 120 ms (`SNAP_REPEAT_MS` :80), only a held key's latest repeat waits, and waiting repeats are dropped on key-up (`dropSnapRepeats` :1026) | The page answers slower than the TV repeats keys (50 ms): no extra move after letting go, but a quick ▼ ▼ OK still moves twice and then clicks |
+| OK | click on **release**: `activate` returns `{r:'tap', x, y, w}` (viewport CSS px + `innerWidth`); `tapWeb` :1104 sends a real touch down/up (40 ms) at `x·viewWidth/w`. Busy until the up is sent (`snapActivate` :1043) | A real input event carries user activation: same-site `target=_blank` passes the pop-up probe's `isUserGesture` (§2), text fields open the on-screen keyboard, the Fullscreen API works. A press right after OK can't scroll the page under the tap |
+| Hold OK | after 600 ms: `__hitvSnap('pointer', true)` returns the focus centre, the pointer appears there, the release is swallowed (`okLongPress` :979). A press whose release comes after the mode changed (theater started, pointer shown) is neither a click nor a hold (`disarmOk` :968) | Fallback for anything snap can't reach (the player's own controls, odd widgets) |
+| OK on the video | `{r:'player'}` → theater mode (§6) + idempotent PLAY (§7) | One press from the episode list to a filled screen |
+| BACK | `__hitvSnap('back')` first; only if it answers `none`, the usual `onBackKey` | Closing the open layer is what a TV user expects from BACK |
+| CH ± | `__hitvSnap('page', ±1)` (`scrollPage` :1189) | |
+| Loading page (no snap.js yet → `null`) | ▲ ▼ scroll a quarter screen (`onSnapMoved` :1032) | The remote never feels dead |
+| No answer within 1.5 s (`SNAP_TIMEOUT_MS` :84: a hung page, a WebView rebuilt after a renderer crash) | `snapCall` :1068 answers `SNAP_TIMED_OUT` itself: the arrows unlock, BACK falls through to `onBackKey` | v1.0's BACK never depended on the page |
+| Pointer shown, theater or fullscreen starts | presses still waiting are dropped (`cancelSnapInput` :974) | They were meant for the ring |
+| Leaving fullscreen/theater | back to snap, ring on the video (`resumeSnap(false)`) | Was: pointer reappears |
+| Page loads while the pointer shows | `inject()` prefixes `window.__hitvPointer=true`, so snap.js keeps its ring off | |
+
+### Page side (`assets/snap.js`)
+
+**Targets.** `a[href]`, buttons, inputs, ARIA roles, `[tabindex]`, `[onclick]`, the player iframe, `SITE.extra`,
+plus an **idle-time scan** for the outermost elements with `cursor:pointer` that aren't links or buttons (the
+site's div buttons: Light / Auto Play toggles, the search opener, the episode-range picker). That is Blink's own
+spatial-navigation heuristic. The scan runs in `requestIdleCallback` slices of 300 elements and again 1.5 s after
+the DOM changes. The query result is cached until a `MutationObserver` sees nodes added or removed.
+A **card** (`SITE.card`) is one stop: the ring frames the card, OK taps `SITE.cardMain` (the poster link).
+
+**Choosing the next target** (`move`):
+- Android `FocusFinder` rules: `isCandidate`, beam first (`beamBeats`), then `13·major² + minor²`.
+- The minor axis is measured from a remembered **column** (`goalX`, set by sideways moves) or **row** (`goalY`, in
+  page coordinates) to the candidate's span, so passing a wide element doesn't lose your grid column.
+- **Sideways stays in the row:** a left/right candidate must overlap vertically or be within half the origin's
+  height; otherwise the row ends (no diagonal jumps into the next section).
+- **The opposite key undoes the last move** (down then up returns to the same card), unless a target lies between
+  here and where the move came from: Left from the player lands on the current episode, Right then takes the next
+  episode, not the player.
+- Targets **off to the side** of the screen (a closed side menu at x < 0) are dropped before the comparison unless a
+  carousel or a sideways scroll box can bring them in. `FocusFinder`'s comparison isn't transitive: a dead candidate
+  could beat the real best one and then lose to a worse one.
+- **Fixed bars** (headers, floating buttons) are reached only by ▲ ▼ and only when the content has nothing in that
+  direction.
+- Entering a **group** (`SITE.groups`: the episode list) from outside lands on its current item.
+- Expensive checks run only on the winner, in this order: `SITE.skip`, foreign `target=_blank` links (dead in
+  this app), `reach()` (hidden by style or opacity; clipped by an `overflow:hidden` box = unreachable, by a
+  scroll box = reachable, by a carousel = reachable by sliding, even when boxes around the carousel clip it too),
+  wrappers lose to targets inside them, and `covered()` (3 `elementFromPoint` probes in the part that shows: a
+  card peeking in at the screen edge or an item at a scroll box's edge counts; a suggestion list or dialog over it
+  rejects it).
+
+**Scrolling** (`reveal`) is done by hand, **never `scrollIntoView()` or `focus()`**: both scroll the
+`overflow:hidden` box of a Swiper carousel itself (verified), which leaves the carousel misaligned for good.
+Scroll boxes around the target are scrolled minimally, then the page so the target sits in a comfort band
+(centred if it was outside). Single presses scroll smoothly, held keys instantly.
+- **Long text** between here and the next target (gap > 0.6 screen, target not yet visible): scroll 0.55 screen
+  instead of jumping. Once the focus is off-screen, the next press searches from the screen edge it went off at,
+  in its column; pressing back towards it scrolls back and lands on it.
+- **Carousels** (Swiper; the instance is `el.swiper`): `slideTo` / `slideToLoop` brings the target slide fully into
+  view; the ring follows the slide. Autoplay is stopped while the ring is inside, started again when it leaves.
+
+**Layers.** While a dialog (`.modal.show`), the side menu (`#sidebar_menu.active`), a dropdown
+(`.dropdown-menu.show`) or any full-screen fixed layer with targets is open, the ring stays inside it. After an OK
+that opens one, the ring moves in once it has stopped animating. BACK closes it and returns the ring to what opened
+it: each layer keeps its own opener (the OK that opened it, else where the first move into it came from), and OKs
+inside the layer don't change it. `SITE.then` moves the ring to what an opener opens: the search box, the player
+after an episode, Less after More, an episode range's first episode. It looks only once the tap has landed (a
+`click` listener), so the old state can't match first.
+
+**The ring** is one `div[data-hitv=ring]` on `<html>`: positioned in page coordinates for page content (the
+compositor scrolls it with the page, no per-frame script on a slow TV) and in screen coordinates for fixed layers.
+`requestAnimationFrame` only follows inner scroll boxes, carousels and transitions. Hidden in theater mode.
+
+**Start and return.** On a fresh page the ring goes to the first on-screen `SITE.start` match: the player, else
+the current episode on watch pages, the spotlight's Watch Now on /home, Watch now on a detail page, the first card
+on lists. For 10 s, until the first key, a better-ranked start that arrives later (the player is built by ajax)
+takes over. After history back (or a reload), the ring returns to the link you opened from that page
+(`sessionStorage`; page links only, an OK on a script link clears it).
+
+**Lost focus** (the page re-rendered it): `recover()` takes a usable stand-in within 80 px of where it was; a
+swapped player (next episode, other server) takes over directly, also in theater mode. After an OK it waits 1.5 s,
+so what the OK opens places the ring first. After a miss it tries again only once the DOM has changed (it is polled
+twice a second, and a full candidate scan on the TV shares the main thread with the player).
+
+**Cost** (the watch page: 12 000 elements, 1 900 candidates of which 1 500 are hidden episode pages): a move takes
+~18 ms on a desktop CPU and 85–110 ms with Chrome's 6× CPU throttling (190 ms before the query cache).
+
+**Site knowledge** lives in the `SITE` table at the top of `snap.js` (extra targets, skips, layers, start targets,
+cards, groups, openers). Everything else is generic.
 
 ## 6. Fullscreen and theater mode
 
-- `onShowCustomView` (:605) puts the fullscreen view in `fullscreen`, hides the WebView, keeps the screen on,
-  hides the pointer and shows a hint. `onHideCustomView` (:621) tears down. BACK calls `leaveFullscreen`
-  (:666): idempotent teardown, then `CustomViewCallback.onCustomViewHidden()`.
+- `onShowCustomView` (:631) puts the fullscreen view in `fullscreen`, hides the WebView, keeps the screen on,
+  hides the pointer and shows a hint. `onHideCustomView` (:648) tears down. BACK calls `leaveFullscreen`
+  (:693): idempotent teardown, then `CustomViewCallback.onCustomViewHidden()`.
 - The site creates the player iframe with `allow="… fullscreen …" allowfullscreen`; jwplayer's own fullscreen
   button reaches `onShowCustomView`. A pointer click is a real input event and carries the user activation the
   Fullscreen API needs. `evaluateJavascript` does not.
-- **Theater mode** (`setTheater` :685 → `window.__hitvTheater` inject.js:237) needs no Fullscreen API. It adds
-  `html.hitv-theater` and marks the player `data-hitv="theater"`. The CSS (inject.js:74–78) makes **everything
+- **Theater mode** (`setTheater` :712 → `window.__hitvTheater` inject.js:240) needs no Fullscreen API. It adds
+  `html.hitv-theater` and marks the player `data-hitv="theater"`. The CSS (inject.js:76–80) makes **everything
   invisible** with `visibility:hidden` (which, unlike `display` or `opacity`, a descendant can switch back) and
   shows only the marked iframe, fixed at 100vw×100vh.
   - **Off is unconditional:** removes the class and every mark, even if the site swapped the player.
   - **Re-targets:** when the site replaces the iframe (new episode/server, auto-next), `keepTheaterTarget`
-    (:130) marks the new one. Verified.
+    (:133) marks the new one. Verified.
   - Untested edge: an ancestor with `transform`/`filter` would make `position:fixed` relative to that ancestor.
 
 ## 7. Player control protocol
@@ -234,13 +344,13 @@ object or JSON-string messages from the parent page, without an origin check:
 | `{cmd:'MUTE'}` | toggle mute |
 | `{cmd:'GET_TIME'}` | replies `{event:'CURRENT_TIME', time, duration, …}` |
 
-Native `player()` (MainActivity.java:703) calls `window.__hitvCmd(cmd, value)` (inject.js:203), with
+Native `player()` (MainActivity.java:731) calls `window.__hitvCmd(cmd, value)` (inject.js:206), with
 cmd ∈ `PLAY_PAUSE | PLAY | PAUSE | SEEK | MUTE`. The return value says what happened:
 
 | Return | Case | Behaviour |
 |---|---|---|
-| `bridge` | player on a `BRIDGE_ORIGIN` (inject.js:25) | Posts one object message. `PLAY`/`PAUSE` first run `probePlaying` (:175): `GET_TIME` twice, 500 ms apart, 800 ms timeout each; toggle only if the state differs. Verified against jwplayer state: pause, pause → paused; play, play → playing. |
-| `frame` | other player iframe | Focuses it; native code sends the key a desktop user would press (Space, ←/→) to the WebView/custom view (:708–712) |
+| `bridge` | player on a `BRIDGE_ORIGIN` (inject.js:25) | Posts one object message. `PLAY`/`PAUSE` first run `probePlaying` (:178): `GET_TIME` twice, 500 ms apart, 800 ms timeout each; toggle only if the state differs. Verified against jwplayer state: pause, pause → paused; play, play → playing. |
+| `frame` | other player iframe | Focuses it; native code sends the key a desktop user would press (Space, ←/→) to the WebView/custom view (:736–740) |
 | `noop` | other player, `PLAY`/`PAUSE` already in that state (from its progress messages, §8) | nothing |
 | `video` | no iframe, `<video>` in the page | Drives the element directly |
 | `none` | nothing found | OSD "No video player on this page" |
@@ -250,12 +360,12 @@ would fire twice.
 
 ## 8. Keep the screen awake
 
-- `inject.js` tracks playback-time advances **only from `PLAYER_ORIGIN` frames** (:160–172), using the message
+- `inject.js` tracks playback-time advances **only from `PLAYER_ORIGIN` frames** (:163–175), using the message
   shapes the site's own `watch.min.js` parses: `{type:'progress', payload:{currentTime}}`,
   `{type:'watching-log', currentTime}`, `{event:'time'|'CURRENT_TIME', time}`.
-- `__hitvRecentlyPlaying()` (:256) is true if the time advanced within 45 s.
-- The app polls it every **20 s while resumed** (`awakePoll` MainActivity.java:642, started in `onResume` :1102–1103,
-  stopped in `onPause` :1109) → `FLAG_KEEP_SCREEN_ON` for 60 s (`keepAwake` :656).
+- `__hitvRecentlyPlaying()` (:259) is true if the time advanced within 45 s.
+- The app polls it every **20 s while resumed** (`awakePoll` MainActivity.java:669, started in `onResume` :1349–1350,
+  stopped in `onPause` :1356) → `FLAG_KEEP_SCREEN_ON` for 60 s (`keepAwake` :683).
 - Fullscreen sets the flag for its duration; remote player commands and theater add 120 s.
 
 ## 9. Android TV manifest requirements (`AndroidManifest.xml`)
@@ -274,17 +384,17 @@ would fire twice.
 
 | Key | Written | Read |
 |---|---|---|
-| `last_url` | `onPageFinished` (:459: TV apps are often killed without `onPause`), `onPause` (:1111), crash handler | `onCreate` (:157), `loadLastUrl` (:503) |
-| `main_hosts` | `rememberMainHost` (:317) | `onCreate` (:151) |
-| `help_seen` | first launch (:161) | |
+| `last_url` | `onPageFinished` (:482: TV apps are often killed without `onPause`), `onPause` (:1358), crash handler | `onCreate` (:179), `loadLastUrl` (:526) |
+| `main_hosts` | `rememberMainHost` (:340) | `onCreate` (:173) |
+| `help_seen` | first launch (:183) | |
 
-Cookies are flushed in `onPause` (:1112).
+Cookies are flushed in `onPause` (:1359).
 
 ## 11. Debug-only hooks (stripped of effect in release: `BuildConfig.DEBUG`)
 
 | Hook | Where |
 |---|---|
-| `--ez no_blocklist true`: lists off, behaviour guards still on | :142 |
-| `--es keytest "R200,D200,L300,R900,L200j500"`: replays D-pad presses with real timestamps (dir + hold ms; `jN` blocks the UI thread N ms) | `handleDebugIntent` :1070, also via `onNewIntent` :1060 |
-| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :736, :835, :920, :882, AdBlocker.java:105, :357 |
+| `--ez no_blocklist true`: lists off, behaviour guards still on | :163 |
+| `--es keytest "R200,D200,L300,R900,L200j500"`: replays D-pad presses with real timestamps (dir + hold ms; `jN` blocks the UI thread N ms) | `handleDebugIntent` :1317, also via `onNewIntent` :1307 |
+| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :764, :874, :1151, :926, AdBlocker.java:105, :357 |
 | WebView remote debugging | :153 |

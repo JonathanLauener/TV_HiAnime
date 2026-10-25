@@ -6,3 +6,5 @@ keystore/
 build/
 *.apk
 *.apk.idsig
+# Local session notes (device addresses, who is using the TV): not for the public repo
+handoff.md

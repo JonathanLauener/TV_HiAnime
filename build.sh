@@ -6,8 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VARIANT=${1:-release}
-VERSION_CODE=1
-VERSION_NAME=1.0
+VERSION_CODE=2
+VERSION_NAME=1.1
 MIN_SDK=21          # Android 5; the target TV runs Android 9 (API 28)
 TARGET_SDK=34
 PKG_DIR=tv/hianime/wrapper
