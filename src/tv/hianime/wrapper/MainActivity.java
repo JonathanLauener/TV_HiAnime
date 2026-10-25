@@ -710,6 +710,11 @@ public class MainActivity extends Activity {
     }
 
     private void setTheater(final boolean on) {
+        setTheater(on, null);
+    }
+
+    /** Theater mode on/off; {@code after} runs once the page has answered (null: nothing). */
+    private void setTheater(final boolean on, final Runnable after) {
         web.evaluateJavascript("window.__hitvTheater?window.__hitvTheater(" + on + "):'none'", result -> {
             if ("\"on\"".equals(result)) {
                 theater = true;
@@ -722,6 +727,7 @@ public class MainActivity extends Activity {
                 if (on) osd("No video player on this page");
                 else if (cursor.getVisibility() != View.VISIBLE) resumeSnap(false);
             }
+            if (after != null) after.run();
         });
     }
 
@@ -1048,12 +1054,14 @@ public class MainActivity extends Activity {
                 tapWeb(r.optInt("x") * k, r.optInt("y") * k, this::snapIdle);
                 return;
             }
-            snapIdle();
             if ("player".equals(kind)) {
-                // The video itself: fill the screen with it and make sure it plays.
-                setTheater(true);
+                // The video itself: fill the screen with it and make sure it plays. Busy until theater mode
+                // is on: a press in between would move the ring (and scroll the page) under the video.
+                setTheater(true, this::snapIdle);
                 player("PLAY", 0, 0, null);
+                return;
             }
+            snapIdle();
         });
     }
 
@@ -1074,7 +1082,10 @@ public class MainActivity extends Activity {
             if (cb != null) cb.on(SNAP_TIMED_OUT);
         };
         ui.postDelayed(timeout, SNAP_TIMEOUT_MS);
-        web.evaluateJavascript("window.__hitvSnap?window.__hitvSnap(" + args + "):null", json -> {
+        // The deadline lets the page drop a call it gets to only after we stopped waiting (a busy page load):
+        // the press is already given up here, it must not still move the ring a second later.
+        long by = System.currentTimeMillis() + SNAP_TIMEOUT_MS;
+        web.evaluateJavascript("window.__hitvSnapBy=" + by + ";window.__hitvSnap?window.__hitvSnap(" + args + "):null", json -> {
             if (done[0]) return;
             done[0] = true;
             ui.removeCallbacks(timeout);

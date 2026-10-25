@@ -134,7 +134,7 @@ never refit when the viewport changed later. Pinning initial = min = max forces 
 ### Renderer crash handling (`onRenderProcessGone` :497)
 - Rebuilds the WebView instead of letting the app die (`recreateWebView` :513).
 - **Crash-loop guard:** the same URL crashing twice within 60 s → `last_url` is set to home and the OSD says so (:502–508).
-- In the background, the WebView is rebuilt but **not loaded** until `onResume` (`pendingLoad`, :522–523, :1348).
+- In the background, the WebView is rebuilt but **not loaded** until `onResume` (`pendingLoad`, :522–523, :1359).
 
 ### Error page (`showError` :553)
 The failing URL goes, HTML-encoded, into a `data-u` attribute. The button's `onclick` is a constant
@@ -148,15 +148,15 @@ anything snap can't reach: hold OK for 600 ms (`LONG_PRESS_MS` :78) and it appea
 
 ### Rendering and input routing
 - `CursorView` draws a 1.4× density arrow (CursorView.java:23); it is not focusable or clickable.
-- `dispatchKeyEvent` (MainActivity.java:760) intercepts the D-pad. An Activity sees keys **after** the IME,
+- `dispatchKeyEvent` (MainActivity.java:766) intercepts the D-pad. An Activity sees keys **after** the IME,
   so the on-screen keyboard still gets the D-pad while it's open.
 - OK = synthetic **touch**: `ACTION_DOWN` on key-down, `ACTION_UP` on key-up, `ACTION_MOVE` while moving
-  (drag works for seek bars) (`touch` :1195). Dispatched to the fullscreen custom view if one is showing, else the
-  WebView, with coordinates translated via `getLocationOnScreen` (`dispatchTouch` :1209).
+  (drag works for seek bars) (`touch` :1206). Dispatched to the fullscreen custom view if one is showing, else the
+  WebView, with coordinates translated via `getLocationOnScreen` (`dispatchTouch` :1220).
 
 ### Timing model (distance from hold time, never from frame count)
 Speed ramps quadratically from `SPEED_MIN` 2.5 to `SPEED_MAX` 20 dp per 16 ms frame over `SPEED_RAMP_MS` 1 s
-(:66–69). Distance is the **integral** of that ramp (`travelFor` :1120):
+(:66–69). Distance is the **integral** of that ramp (`travelFor` :1131):
 
 ```
 t ≤ 1000 ms:  dp = (2.5·t + 17.5·t³ / (3·1000²)) / 16
@@ -166,43 +166,43 @@ px = dp × density
 
 | Rule | Where | Why |
 |---|---|---|
-| Shortest tap counts as 40 ms → ~6 dp | `travelFor` :1121 | A tap always moves visibly |
-| On key-down, `heldSince = max(downTime, now − 300 ms)` (`MAX_INPUT_LAG_MS` :71) | :910 | Bogus or stale `downTime` stamps can't produce jumps |
-| While held, the mover counts only time it saw itself, **≤ 50 ms per frame** (`MAX_FRAME_GAP_MS` :72) | `mover` :1129–1147 | A stalled UI thread never turns into a jump |
-| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :919–1115 | Queued key events behind a busy UI thread still move the distance the hold time says |
+| Shortest tap counts as 40 ms → ~6 dp | `travelFor` :1132 | A tap always moves visibly |
+| On key-down, `heldSince = max(downTime, now − 300 ms)` (`MAX_INPUT_LAG_MS` :71) | :916 | Bogus or stale `downTime` stamps can't produce jumps |
+| While held, the mover counts only time it saw itself, **≤ 50 ms per frame** (`MAX_FRAME_GAP_MS` :72) | `mover` :1140–1158 | A stalled UI thread never turns into a jump |
+| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :925–1126 | Queued key events behind a busy UI thread still move the distance the hold time says |
 
 Measured on the emulator with the debug key-replay hook (05 §3): 30 ms → 16 px, 200 → 68, 300 → 113,
 900 → 813, and 200 ms with a 500 ms UI stall → 68 (no jump).
 
 ### Scrolling and hiding
-- Pushing past an edge accumulates scroll (`movePointer` :1160), flushed every 48 ms (`flushScroll` :1176)
+- Pushing past an edge accumulates scroll (`movePointer` :1171), flushed every 48 ms (`flushScroll` :1187)
   through `SCROLL_JS` (:87). That script runs `elementFromPoint` at the pointer, scrolls the nearest scrollable
   ancestor that actually moves, and falls back to `window.scrollBy`. Coordinates are scaled by
-  `innerWidth / view width`, so it stays correct under the §4 scale. CH+/−, PgUp/PgDn scroll 80% (`scrollPage` :1189).
-- The pointer auto-hides after 10 s browsing / 3 s over video (`HIDE_POINTER_*` :73, `pointerIdleCheck` :1245).
-  Hiding it while browsing hands the D-pad back to snap mode (`resumeSnap` :1230), focused on what the
+  `innerWidth / view width`, so it stays correct under the §4 scale. CH+/−, PgUp/PgDn scroll 80% (`scrollPage` :1200).
+- The pointer auto-hides after 10 s browsing / 3 s over video (`HIDE_POINTER_*` :73, `pointerIdleCheck` :1256).
+  Hiding it while browsing hands the D-pad back to snap mode (`resumeSnap` :1241), focused on what the
   pointer was over. Over a video, ▲ ▼ bring it back (below).
 
 ### Player mode
-When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :864, :878–889):
+When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :870, :884–895):
 OK = play/pause, ◀ ▶ = seek ∓10 s (every 3rd key repeat), ▲ ▼ = bring the pointer back to reach the
 player's own buttons.
 
-### Key map (`dispatchKeyEvent` :760)
+### Key map (`dispatchKeyEvent` :766)
 
 | Key | Action |
 |---|---|
 | D-pad | snap: move the focus ring (§5c). Pointer mode: move the pointer |
 | OK | snap: open the focused item **on release**; **hold** 600 ms → pointer. On the video: theater mode + play. Pointer mode: click (drag while held) |
-| BACK | snap: first let the page close what it has open (search suggestions, dialog, side menu, dropdown, search box, light-off; `snap.js back()`). Then: cancel drag → leave fullscreen → leave theater → history back, **skipping the watch page's pushState episode entries** (`backSteps` :1267) → "press again to exit" (`onBackKey` :1278) |
+| BACK | snap: first let the page close what it has open (search suggestions, dialog, side menu, dropdown, search box, light-off; `snap.js back()`). Then: cancel drag → leave fullscreen → leave theater → history back, **skipping the watch page's pushState episode entries** (`backSteps` :1278) → "press again to exit" (`onBackKey` :1289) |
 | CH +/−, PgUp/PgDn | snap: a screen up/down, the ring stays about where it was on screen. Pointer mode: scroll 80% |
-| any key while the help card is open | **only closes the card** (BACK included) (:767–770) |
+| any key while the help card is open | **only closes the card** (BACK included) (:773–776) |
 | Play/Pause | toggle |
-| **Play**, **Pause** (separate keys on Sony remotes) | **idempotent** play / pause (:776, :779; §7) |
+| **Play**, **Pause** (separate keys on Sony remotes) | **idempotent** play / pause (:782, :785; §7) |
 | FF / RW | seek ±10 s (holding repeats) |
 | Next / Prev | seek ±60 s |
 | Stop | leave fullscreen/theater |
-| RED (and MENU) | theater on/off (or leave fullscreen) (:797) |
+| RED (and MENU) | theater on/off (or leave fullscreen) (:803) |
 | GREEN | home |
 | YELLOW | reload |
 | BLUE | skip 85 s (intro) |
@@ -228,19 +228,19 @@ off-screen targets and scrolls 40 px per press, focuses a fixed header after scr
 clipped carousel slides, and never focuses cross-origin iframes (the player). So the app consumes the D-pad and
 the page never sees arrow keys.
 
-### Java side (`onSnapKey` :938)
+### Java side (`onSnapKey` :944)
 
 | What | How | Why |
 |---|---|---|
-| Arrows | `__hitvSnap('move', dir)`; one call in flight, presses that come meanwhile (arrows, OK, CH ±) wait **in order**, at most 4 (`snapSend` :1001); held keys step at most every 120 ms (`SNAP_REPEAT_MS` :80), only a held key's latest repeat waits, and waiting repeats are dropped on key-up (`dropSnapRepeats` :1026) | The page answers slower than the TV repeats keys (50 ms): no extra move after letting go, but a quick ▼ ▼ OK still moves twice and then clicks |
-| OK | click on **release**: `activate` returns `{r:'tap', x, y, w}` (viewport CSS px + `innerWidth`); `tapWeb` :1104 sends a real touch down/up (40 ms) at `x·viewWidth/w`. Busy until the up is sent (`snapActivate` :1043) | A real input event carries user activation: same-site `target=_blank` passes the pop-up probe's `isUserGesture` (§2), text fields open the on-screen keyboard, the Fullscreen API works. A press right after OK can't scroll the page under the tap |
-| Hold OK | after 600 ms: `__hitvSnap('pointer', true)` returns the focus centre, the pointer appears there, the release is swallowed (`okLongPress` :979). A press whose release comes after the mode changed (theater started, pointer shown) is neither a click nor a hold (`disarmOk` :968) | Fallback for anything snap can't reach (the player's own controls, odd widgets) |
-| OK on the video | `{r:'player'}` → theater mode (§6) + idempotent PLAY (§7) | One press from the episode list to a filled screen |
+| Arrows | `__hitvSnap('move', dir)`; one call in flight, presses that come meanwhile (arrows, OK, CH ±) wait **in order**, at most 4 (`snapSend` :1007); held keys step at most every 120 ms (`SNAP_REPEAT_MS` :80), only a held key's latest repeat waits, and waiting repeats are dropped on key-up (`dropSnapRepeats` :1032) | The page answers slower than the TV repeats keys (50 ms): no extra move after letting go, but a quick ▼ ▼ OK still moves twice and then clicks |
+| OK | click on **release**: `activate` returns `{r:'tap', x, y, w}` (viewport CSS px + `innerWidth`); `tapWeb` :1115 sends a real touch down/up (40 ms) at `x·viewWidth/w`. Busy until the up is sent (`snapActivate` :1049) | A real input event carries user activation: same-site `target=_blank` passes the pop-up probe's `isUserGesture` (§2), text fields open the on-screen keyboard, the Fullscreen API works. A press right after OK can't scroll the page under the tap |
+| Hold OK | after 600 ms: `__hitvSnap('pointer', true)` returns the focus centre, the pointer appears there, the release is swallowed (`okLongPress` :985). A press whose release comes after the mode changed (theater started, pointer shown) is neither a click nor a hold (`disarmOk` :974) | Fallback for anything snap can't reach (the player's own controls, odd widgets) |
+| OK on the video | `{r:'player'}` → theater mode (§6) + idempotent PLAY (§7); busy until the page has switched theater on (`setTheater(on, after)`) | One press from the episode list to a filled screen; a quick ▼ after it can't move the ring under the video |
 | BACK | `__hitvSnap('back')` first; only if it answers `none`, the usual `onBackKey` | Closing the open layer is what a TV user expects from BACK |
-| CH ± | `__hitvSnap('page', ±1)` (`scrollPage` :1189) | |
-| Loading page (no snap.js yet → `null`) | ▲ ▼ scroll a quarter screen (`onSnapMoved` :1032) | The remote never feels dead |
-| No answer within 1.5 s (`SNAP_TIMEOUT_MS` :84: a hung page, a WebView rebuilt after a renderer crash) | `snapCall` :1068 answers `SNAP_TIMED_OUT` itself: the arrows unlock, BACK falls through to `onBackKey` | v1.0's BACK never depended on the page |
-| Pointer shown, theater or fullscreen starts | presses still waiting are dropped (`cancelSnapInput` :974) | They were meant for the ring |
+| CH ± | `__hitvSnap('page', ±1)` (`scrollPage` :1200) | |
+| Loading page (no snap.js yet → `null`) | ▲ ▼ scroll a quarter screen (`onSnapMoved` :1038) | The remote never feels dead |
+| No answer within 1.5 s (`SNAP_TIMEOUT_MS` :84: a hung page, a WebView rebuilt after a renderer crash) | `snapCall` :1076 answers `SNAP_TIMED_OUT` itself: the arrows unlock, BACK falls through to `onBackKey`. Each call carries a deadline (`window.__hitvSnapBy`); a call the page reaches after it answers `{r:'late'}` without acting | v1.0's BACK never depended on the page; a press given up during a busy page load must not still move the ring a second later |
+| Pointer shown, theater or fullscreen starts | presses still waiting are dropped (`cancelSnapInput` :980) | They were meant for the ring |
 | Leaving fullscreen/theater | back to snap, ring on the video (`resumeSnap(false)`) | Was: pointer reappears |
 | Page loads while the pointer shows | `inject()` prefixes `window.__hitvPointer=true`, so snap.js keeps its ring off | |
 
@@ -300,7 +300,8 @@ compositor scrolls it with the page, no per-frame script on a slow TV) and in sc
 **Start and return.** On a fresh page the ring goes to the first on-screen `SITE.start` match: the player, else
 the current episode on watch pages, the spotlight's Watch Now on /home, Watch now on a detail page, the first card
 on lists. For 10 s, until the first key, a better-ranked start that arrives later (the player is built by ajax)
-takes over. After history back (or a reload), the ring returns to the link you opened from that page
+takes over; a first press that only put the ring on a start target (`{r:'start'}`, e.g. before the slider was
+built) doesn't stop that. After history back (or a reload), the ring returns to the link you opened from that page
 (`sessionStorage`; page links only, an OK on a script link clears it).
 
 **Lost focus** (the page re-rendered it): `recover()` takes a usable stand-in within 80 px of where it was; a
@@ -344,13 +345,13 @@ object or JSON-string messages from the parent page, without an origin check:
 | `{cmd:'MUTE'}` | toggle mute |
 | `{cmd:'GET_TIME'}` | replies `{event:'CURRENT_TIME', time, duration, …}` |
 
-Native `player()` (MainActivity.java:731) calls `window.__hitvCmd(cmd, value)` (inject.js:206), with
+Native `player()` (MainActivity.java:737) calls `window.__hitvCmd(cmd, value)` (inject.js:206), with
 cmd ∈ `PLAY_PAUSE | PLAY | PAUSE | SEEK | MUTE`. The return value says what happened:
 
 | Return | Case | Behaviour |
 |---|---|---|
 | `bridge` | player on a `BRIDGE_ORIGIN` (inject.js:25) | Posts one object message. `PLAY`/`PAUSE` first run `probePlaying` (:178): `GET_TIME` twice, 500 ms apart, 800 ms timeout each; toggle only if the state differs. Verified against jwplayer state: pause, pause → paused; play, play → playing. |
-| `frame` | other player iframe | Focuses it; native code sends the key a desktop user would press (Space, ←/→) to the WebView/custom view (:736–740) |
+| `frame` | other player iframe | Focuses it; native code sends the key a desktop user would press (Space, ←/→) to the WebView/custom view (:742–746) |
 | `noop` | other player, `PLAY`/`PAUSE` already in that state (from its progress messages, §8) | nothing |
 | `video` | no iframe, `<video>` in the page | Drives the element directly |
 | `none` | nothing found | OSD "No video player on this page" |
@@ -364,8 +365,8 @@ would fire twice.
   shapes the site's own `watch.min.js` parses: `{type:'progress', payload:{currentTime}}`,
   `{type:'watching-log', currentTime}`, `{event:'time'|'CURRENT_TIME', time}`.
 - `__hitvRecentlyPlaying()` (:259) is true if the time advanced within 45 s.
-- The app polls it every **20 s while resumed** (`awakePoll` MainActivity.java:669, started in `onResume` :1349–1350,
-  stopped in `onPause` :1356) → `FLAG_KEEP_SCREEN_ON` for 60 s (`keepAwake` :683).
+- The app polls it every **20 s while resumed** (`awakePoll` MainActivity.java:669, started in `onResume` :1360–1361,
+  stopped in `onPause` :1367) → `FLAG_KEEP_SCREEN_ON` for 60 s (`keepAwake` :683).
 - Fullscreen sets the flag for its duration; remote player commands and theater add 120 s.
 
 ## 9. Android TV manifest requirements (`AndroidManifest.xml`)
@@ -384,17 +385,17 @@ would fire twice.
 
 | Key | Written | Read |
 |---|---|---|
-| `last_url` | `onPageFinished` (:482: TV apps are often killed without `onPause`), `onPause` (:1358), crash handler | `onCreate` (:179), `loadLastUrl` (:526) |
+| `last_url` | `onPageFinished` (:482: TV apps are often killed without `onPause`), `onPause` (:1369), crash handler | `onCreate` (:179), `loadLastUrl` (:526) |
 | `main_hosts` | `rememberMainHost` (:340) | `onCreate` (:173) |
 | `help_seen` | first launch (:183) | |
 
-Cookies are flushed in `onPause` (:1359).
+Cookies are flushed in `onPause` (:1370).
 
 ## 11. Debug-only hooks (stripped of effect in release: `BuildConfig.DEBUG`)
 
 | Hook | Where |
 |---|---|
 | `--ez no_blocklist true`: lists off, behaviour guards still on | :163 |
-| `--es keytest "R200,D200,L300,R900,L200j500"`: replays D-pad presses with real timestamps (dir + hold ms; `jN` blocks the UI thread N ms) | `handleDebugIntent` :1317, also via `onNewIntent` :1307 |
-| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :764, :874, :1151, :926, AdBlocker.java:105, :357 |
+| `--es keytest "R200,D200,L300,R900,L200j500"`: replays D-pad presses with real timestamps (dir + hold ms; `jN` blocks the UI thread N ms) | `handleDebugIntent` :1328, also via `onNewIntent` :1318 |
+| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :770, :880, :1162, :932, AdBlocker.java:105, :357 |
 | WebView remote debugging | :153 |

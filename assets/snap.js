@@ -1201,17 +1201,23 @@
   window.addEventListener('load', function () { setTimeout(autoStart, 400); }, false);
 
   window.__hitvSnap = function (cmd, a, b, c) {
-    if (cmd !== 'info') userMoved = true;
+    // The app gave up waiting for this call (the page was busy): it already handled the key its own way.
+    if (cmd !== 'pointer' && cmd !== 'info' && window.__hitvSnapBy && now() > window.__hitvSnapBy) return { r: 'late' };
+    var out;
     try {
-      if (cmd === 'move') return move(a);
-      if (cmd === 'page') return page(a);
-      if (cmd === 'activate') return activate();
-      if (cmd === 'back') return back();
-      if (cmd === 'pointer') return pointerMode(!!a, b, c, arguments[4]);
-      if (cmd === 'info') return result('info');
-      return { r: 'unknown' };
+      if (cmd === 'move') out = move(a);
+      else if (cmd === 'page') out = page(a);
+      else if (cmd === 'activate') out = activate();
+      else if (cmd === 'back') out = back();
+      else if (cmd === 'pointer') out = pointerMode(!!a, b, c, arguments[4]);
+      else if (cmd === 'info') return result('info');
+      else return { r: 'unknown' };
     } catch (e) {
-      return { r: 'error', m: String(e && e.message || e) };
+      out = { r: 'error', m: String(e && e.message || e) };
     }
+    // A first press that only put the ring on a start target isn't a choice yet: a better start that
+    // arrives later (a slider built by script, the ajax player) may still take over.
+    if (!out || (out.r !== 'start' && out.r !== 'shown' && out.r !== 'empty')) userMoved = true;
+    return out;
   };
 })();

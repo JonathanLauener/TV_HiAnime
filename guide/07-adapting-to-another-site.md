@@ -33,9 +33,9 @@ test ! -e keystore && ! find . -name '*.jks' -o -name '*.password' | grep -q . &
 | `SITE_DOMAIN` | MainActivity.java:60 | Regex for domains the site may move to (learned only from https redirects off a site host) |
 | `AUTH_HOSTS` + `/auth/social/` prefix | MainActivity.java:63, :399 | The site's sign-in providers and its OAuth start path; empty the array if there's no social login |
 | `/sw.js` kill switch | MainActivity.java:431 | The site's service-worker path, if any |
-| `/watch/` in `backSteps` | MainActivity.java:1272 | The path whose pushState entries BACK should skip |
+| `/watch/` in `backSteps` | MainActivity.java:1283 | The path whose pushState entries BACK should skip |
 | `TV_LAYOUT_WIDTH` | MainActivity.java:58 | The narrowest width at which the site shows its desktop layout |
-| `HELP_TEXT`, colour keys | MainActivity.java:94, `dispatchKeyEvent` :760 | e.g. BLUE "skip 85 s" assumes anime openings |
+| `HELP_TEXT`, colour keys | MainActivity.java:94, `dispatchKeyEvent` :766 | e.g. BLUE "skip 85 s" assumes anime openings |
 | `NEVER_BLOCK` | AdBlocker.java:37 | Site, every player host, library CDNs the player needs |
 | `AD_PATH` / `AD_QUERY` / `MEDIA_PATH` | AdBlocker.java:43, :50, :53 | Fixed-name ad loaders of **your** networks; test each regex against your player and CDN URLs for false positives; adapt the media-path shape to your CDN |
 | `curated.txt` | `assets/adblock/` | Observed ad/tracker hosts from your ledger; keep the generic network block |
