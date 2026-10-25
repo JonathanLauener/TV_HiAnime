@@ -146,6 +146,8 @@ public class MainActivity extends Activity {
     private int okCode;                // the OK key held in snap mode (0: none)
 
     private long lastBackPress;
+    /** When a video segment was last requested (any frame); written on WebView network threads. */
+    private volatile long lastMediaAt = -60_000;
     /** Target of the main-frame navigation in flight (server redirects are judged by where they came from). */
     private volatile Uri pendingMainUrl;
     private boolean resumed;
@@ -432,6 +434,7 @@ public class MainActivity extends Activity {
             return new WebResourceResponse("application/javascript", "utf-8",
                     new java.io.ByteArrayInputStream(SW_KILL_SWITCH.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         }
+        if (AdBlocker.isMedia(url)) lastMediaAt = SystemClock.uptimeMillis();
         return blocker.shouldBlock(url) ? AdBlocker.emptyResponse() : null;
     }
 
@@ -638,7 +641,7 @@ public class MainActivity extends Activity {
             fullscreen.addView(view, match());
             fullscreen.setVisibility(View.VISIBLE);
             web.setVisibility(View.INVISIBLE);
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            keepAwake(120_000);   // awakePoll extends it while the video plays; paused, the TV may sleep
             cancelSnapInput();
             hidePointer();
             osd("OK play/pause · ◀ ▶ seek · ▲ ▼ pointer · BACK exit");
@@ -670,14 +673,15 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             web.evaluateJavascript("window.__hitvRecentlyPlaying?window.__hitvRecentlyPlaying():false", result -> {
-                if ("true".equals(result)) keepAwake(60_000);
+                // Also players without progress messages: video segments still being fetched means playing.
+                if ("true".equals(result) || SystemClock.uptimeMillis() - lastMediaAt < 45_000) keepAwake(60_000);
             });
             ui.postDelayed(this, 20_000);
         }
     };
 
     private final Runnable releaseScreen = () -> {
-        if (customView == null) getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     };
 
     private void keepAwake(long ms) {

@@ -418,6 +418,9 @@
   function isPage(el) {
     var h = el && el.href;
     if (!h || typeof h !== 'string' || !/^https?:/i.test(h)) return false;
+    // href="#" is a script link, whatever a <base href> makes of it (it resolves to another page there).
+    var raw = el.getAttribute('href');
+    if (raw === null || /^\s*(#|javascript:|$)/i.test(raw)) return false;
     return h.split('#')[0] !== location.href.split('#')[0] || h.indexOf('#') < 0;
   }
 
@@ -556,12 +559,14 @@
 
   function scrollByY(target, dy, smooth) {
     if (!dy) return;
-    try { target.scrollBy({ top: dy, left: 0, behavior: smooth ? 'smooth' : 'auto' }); }
+    // 'instant', not 'auto': a page with scroll-behavior:smooth (Bootstrap 5 sets it on :root) would make
+    // 'auto' glide too, and everything measured right after the scroll (ring, OK's tap point) would be stale.
+    try { target.scrollBy({ top: dy, left: 0, behavior: smooth ? 'smooth' : 'instant' }); }
     catch (e) { if (target === window) window.scrollBy(0, dy); else target.scrollTop += dy; }
   }
   function scrollByX(target, dx) {
     if (!dx) return;
-    try { target.scrollBy({ left: dx, top: 0, behavior: 'auto' }); } catch (e) { target.scrollLeft += dx; }
+    try { target.scrollBy({ left: dx, top: 0, behavior: 'instant' }); } catch (e) { target.scrollLeft += dx; }
   }
 
   /**
@@ -1012,6 +1017,9 @@
     followLayer(scope, cur);
     var p = tapPoint(el);
     if (!p) {
+      // Switched off (the current page number: pointer-events:none): a click would still follow its href.
+      var es = style(el);
+      if (es && es.pointerEvents === 'none') return { r: 'none', d: describe(el) };
       // Covered everywhere, or no hit area of its own: a plain click is the best we can do.
       try { el.click(); } catch (e) {}
       return { r: 'done', d: describe(el) };
@@ -1144,30 +1152,50 @@
   /** On a fresh page: back to the link you opened from here (history back), else the start target. */
   function autoStart() {
     if (pointer || userMoved) return;
+    // Back on a page: the link opened from here, also when it arrives late (search results by fetch).
+    if (startRank !== -1) {
+      var back = savedTarget();
+      if (back) {
+        var cur = current();
+        if (!cur || cur.box !== back.box) setFocus(back, true, false);
+        startRank = -1;
+        return;
+      }
+    }
     if (current()) {
       // Already on an automatic start: switch if a better one has arrived since (the ajax player).
       var better = rankedStart(startRank);
       if (better) { setFocus(better.c, false, false); startRank = better.rank; }
       return;
     }
-    var saved = null;
-    try {
-      var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
-      if (!nav || nav.type === 'back_forward' || nav.type === 'reload') saved = JSON.parse(sessionStorage.getItem(restoreKey()) || 'null');
-    } catch (e) {}
-    if (saved && saved.href) {
-      var links = document.querySelectorAll('a[href]');
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].href !== saved.href) continue;
-        var t = targetFor(links[i]);
-        var c = { el: t.el, box: t.box, r: t.box.getBoundingClientRect() };
-        if (c.r.width > 2 && usable(c, null)) { setFocus(c, true, false); startRank = -1; return; }
-      }
-    }
     var ranked = rankedStart(99);
     if (ranked) { setFocus(ranked.c, false, false); startRank = ranked.rank; return; }
     var st = startTarget();
     if (st) setFocus(st, false, false);
+  }
+
+  /** After history back or a reload: the link last opened from this page, if it is there and usable. */
+  var savedHref;
+  function savedTarget() {
+    if (savedHref === undefined) {
+      savedHref = null;
+      try {
+        var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+        if (!nav || nav.type === 'back_forward' || nav.type === 'reload') {
+          var saved = JSON.parse(sessionStorage.getItem(restoreKey()) || 'null');
+          if (saved && saved.href) savedHref = saved.href;
+        }
+      } catch (e) {}
+    }
+    if (!savedHref) return null;
+    var links = document.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].href !== savedHref) continue;
+      var t = targetFor(links[i]);
+      var c = { el: t.el, box: t.box, r: t.box.getBoundingClientRect() };
+      if (c.r.width > 2 && usable(c, null)) return c;
+    }
+    return null;
   }
 
   /** The best SITE.start target on screen ranked above `than`, as {c, rank}. */

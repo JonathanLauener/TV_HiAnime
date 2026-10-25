@@ -64,6 +64,12 @@ elif [[ -z "${HITV_KEYSTORE:-}" && -f keystore/password.txt ]]; then
 else
   KS_PASS_FILE=${KS%.jks}.password
 fi
+if [[ ! -f "$KS" && -e "$KS_PASS_FILE" ]]; then
+  # A password without its keystore: a typo in HITV_KEYSTORE, or a fresh clone. Making a new key here
+  # would overwrite that password (and lock out its key for good).
+  echo "error: $KS_PASS_FILE exists but keystore $KS doesn't; refusing to generate a new key over it" >&2
+  exit 1
+fi
 if [[ ! -f "$KS" ]]; then
   ( umask 077
     mkdir -p "$(dirname "$KS")"

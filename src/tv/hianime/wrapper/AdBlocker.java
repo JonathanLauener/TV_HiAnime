@@ -55,6 +55,12 @@ final class AdBlocker {
 
     private static final byte[] EMPTY = new byte[0];
 
+    /** A video stream, subtitle or key request (also tells the app a video is playing). */
+    static boolean isMedia(Uri url) {
+        String path = url.getPath();
+        return path != null && MEDIA_PATH.matcher(path).find();
+    }
+
     private final Set<String> curated;
     private volatile Set<String> hosts = Collections.emptySet();
     private final AtomicInteger blocked = new AtomicInteger();
