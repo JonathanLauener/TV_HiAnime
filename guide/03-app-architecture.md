@@ -8,10 +8,11 @@ Reference files (line numbers checked against the final code, 2026-10-25):
 
 | File | Role |
 |---|---|
-| `src/tv/hianime/wrapper/MainActivity.java` (1137 lines) | WebView setup, navigation/pop-up guard, service-worker kill switch, remote control, pointer timing, fullscreen, lifecycle, debug hooks |
-| `src/tv/hianime/wrapper/AdBlocker.java` (153) | Request blocking: curated list → URL patterns → hosts list, plus `NEVER_BLOCK`; empty-200 and 204 replies |
+| `src/tv/hianime/wrapper/MainActivity.java` (1399 lines) | WebView setup, navigation/pop-up guard, service-worker kill switch, remote control, pointer timing, fullscreen, lifecycle, debug hooks |
+| `src/tv/hianime/wrapper/AdBlocker.java` (159) | Request blocking: curated list → URL patterns → hosts list, plus `NEVER_BLOCK`; empty-200 and 204 replies |
 | `src/tv/hianime/wrapper/CursorView.java` (91) | Drawn pointer overlay (never focusable or clickable) |
-| `assets/inject.js` (259) | ES5 page script: dead `window.open`, SW neutraliser, TV viewport, ad CSS + overlay sweeper, player finder/commands, theater mode, playback tracking |
+| `assets/inject.js` (262) | ES5 page script: dead `window.open`, SW neutraliser, TV viewport, ad CSS + overlay sweeper, player finder/commands, theater mode, playback tracking |
+| `assets/snap.js` (1251) | ES5 snap navigation, appended to inject.js: targets, direction rules, focus ring, layers, start targets per page, history-back restore |
 | `assets/adblock/curated.txt` | Site-specific ad/tracker domains from the evidence ledger |
 | `assets/adblock/hosts.txt` | StevenBlack unified hosts snapshot (domains only, required hosts removed) |
 | `AndroidManifest.xml` | TV launcher integration, `<uses-sdk>` (also read by lint) |
@@ -29,23 +30,23 @@ Reference files (line numbers checked against the final code, 2026-10-25):
 
 All page subresources and service-worker fetches go through `intercept()` (MainActivity.java:432),
 which answers the site's `/sw.js` itself (below) and otherwise asks `AdBlocker.shouldBlock`
-(AdBlocker.java:88).
+(AdBlocker.java:94).
 
 | Layer | What | Why |
 |---|---|---|
 | 0. `NEVER_BLOCK` (AdBlocker.java:37) | Site, player hosts, `anilist.co`, `myanimelist.net`, `jsdelivr.net`, `jquery.com`, `jwpcdn.com`, `jwplayer.com`, `challenges.cloudflare.com`, `www.gstatic.com` | Wins over everything; protects against list false positives |
-| 1. `curated.txt` | Domains from the evidence ledger (suffix match that stops at the registrable domain, `matchesSuffix` :127) | This is what actually removes this site's ads |
+| 1. `curated.txt` | Domains from the evidence ledger (suffix match that stops at the registrable domain, `matchesSuffix` :133) | This is what actually removes this site's ads |
 | 2. `AD_PATH` / `AD_QUERY` (:43, :50) | Ad loader paths that stay fixed while domains rotate (`/tag.min.js`, `/mt/3p.js`, `/gid.js`, `/<d>/<6+ digits>/`, `/<11 alnum>/<5–7 digits>`, `/pfe/current/`, `js_build=iclick`) | Survives domain rotation |
-| 3. `hosts.txt` | ~71k general ad/malware domains, loaded on a background thread (:66) | Backstop; **skipped when `MEDIA_PATH` (:53) matches** (`.m3u8/.ts/.vtt…`, `/seg-N`, `/anime/<hash>/`) so a false positive can't break video |
+| 3. `hosts.txt` | ~71k general ad/malware domains, loaded on a background thread (:72) | Backstop; **skipped when `MEDIA_PATH` (:53) matches** (`.m3u8/.ts/.vtt…`, `/seg-N`, `/anime/<hash>/`) so a false positive can't break video |
 
 Replies:
-- Blocked **subresource**: `emptyResponse()` (AdBlocker.java:111), an empty **HTTP 200** with
+- Blocked **subresource**: `emptyResponse()` (AdBlocker.java:117), an empty **HTTP 200** with
   `Access-Control-Allow-Origin: *`. A 4xx/onerror makes loaders retry other domains or trip anti-adblock
   walls; an empty success just does nothing.
-- Blocked **main-frame navigation**: `stayOnPageResponse()` (:122), **HTTP 204**. The browser stays on the
+- Blocked **main-frame navigation**: `stayOnPageResponse()` (:128), **HTTP 204**. The browser stays on the
   current page; an empty 200 had replaced the page with a blank document.
 
-`setListsEnabled(false)` (:75) turns layers 1–3 off. It's only reachable from debug builds
+`setListsEnabled(false)` (:81) turns layers 1–3 off. It's only reachable from debug builds
 (`--ez no_blocklist true`, MainActivity.java:165) and exists to test the behaviour guards in §2 on their own.
 
 ### Service worker: neutralised
@@ -169,7 +170,7 @@ px = dp × density
 | Shortest tap counts as 40 ms → ~6 dp | `travelFor` :1136 | A tap always moves visibly |
 | On key-down, `heldSince = max(downTime, now − 300 ms)` (`MAX_INPUT_LAG_MS` :71) | :920 | Bogus or stale `downTime` stamps can't produce jumps |
 | While held, the mover counts only time it saw itself, **≤ 50 ms per frame** (`MAX_FRAME_GAP_MS` :72) | `mover` :1144–1162 | A stalled UI thread never turns into a jump |
-| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :929–1130 | Queued key events behind a busy UI thread still move the distance the hold time says |
+| On key-up, top the distance up to `travelFor(min(eventTime, now) − heldSince)` | :929–935 | Queued key events behind a busy UI thread still move the distance the hold time says |
 
 Measured on the emulator with the debug key-replay hook (05 §3): 30 ms → 16 px, 200 → 68, 300 → 113,
 900 → 813, and 200 ms with a 500 ms UI stall → 68 (no jump).
@@ -184,7 +185,7 @@ Measured on the emulator with the debug key-replay hook (05 §3): 30 ms → 16 p
   pointer was over. Over a video, ▲ ▼ bring it back (below).
 
 ### Player mode
-When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :874, :888–899):
+When fullscreen (custom view) or theater is active **and** the pointer is hidden (`onNavKey` :874, :888–905):
 OK = play/pause, ◀ ▶ = seek ∓10 s (every 3rd key repeat), ▲ ▼ = bring the pointer back to reach the
 player's own buttons.
 
@@ -386,7 +387,7 @@ would fire twice.
 | `android.software.leanback` `required="false"` | :13 |
 | `android.hardware.touchscreen` `required="false"` (TVs have none) | :14 |
 | `android:banner="@drawable/banner"`: **320×180** PNG in `drawable-xhdpi` | :19 |
-| `usesCleartextTraffic="true"`, `largeHeap="true"`, `allowBackup="false"` | :21–24 |
+| `usesCleartextTraffic="true"`, `largeHeap="true"`, `allowBackup="false"` | :22–24 |
 | `launchMode="singleTask"`, `configChanges=…` so remote/keyboard/uiMode changes don't recreate the WebView | :29–30 |
 | `<category android:name="android.intent.category.LEANBACK_LAUNCHER"/>` (keep `LAUNCHER` too) | :35 |
 
@@ -396,7 +397,7 @@ would fire twice.
 |---|---|---|
 | `last_url` | `onPageFinished` (:485: TV apps are often killed without `onPause`), `onPause` (:1373), crash handler | `onCreate` (:181), `loadLastUrl` (:529) |
 | `main_hosts` | `rememberMainHost` (:342) | `onCreate` (:175) |
-| `help_seen` | first launch (:185) | |
+| `help_seen_v11` | first launch (:185) | |
 
 Cookies are flushed in `onPause` (:1374).
 
@@ -406,5 +407,5 @@ Cookies are flushed in `onPause` (:1374).
 |---|---|
 | `--ez no_blocklist true`: lists off, behaviour guards still on | :165 |
 | `--es keytest "R200,D200,L300,R900,L200j500"`: replays D-pad presses with real timestamps (dir + hold ms; `jN` blocks the UI thread N ms) | `handleDebugIntent` :1332, also via `onNewIntent` :1322 |
-| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :774, :884, :1166, :936, AdBlocker.java:105, :357 |
-| WebView remote debugging | :153 |
+| Log lines `dispatch …`, `key …`, `pointer at x,y`, `release <dir> held=…ms travelled=…px`, `blocked <url>`, `nav … redirect= from=` | :774, :884, :1166, :936, AdBlocker.java:111, MainActivity.java:382 |
+| WebView remote debugging | :177 |

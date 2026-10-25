@@ -19,9 +19,9 @@ build-tools binaries. It works with framework APIs only; no AndroidX/AAR depende
 | 3. Dex | `d8 --release --min-api 21 --lib android.jar --output dex <classes>` (:48) | `classes.dex` (lambdas desugared) |
 | 4. Package | `cp base.apk unsigned.apk; (cd dex && zip -q -X ../unsigned.apk classes.dex)` (:52–53) | unsigned APK |
 | 4. Align | `zipalign -P 16 -f 4 unsigned.apk aligned.apk` (:54) | 4-byte aligned, 16 KB page-aligned for any `.so` |
-| 5. Key (first build only) | `keytool -genkeypair … -storepass:file P -keypass:file P` under `umask 077` (:67–74), then `chmod 600` (:75) | private key + password file |
-| 5. Sign | `apksigner sign --ks "$KS" --ks-key-alias hianime-tv --ks-pass "file:$KS_PASS_FILE" --out APK aligned.apk` (:76) | v1+v2+v3 signed (v1 is added automatically because min SDK < 24) |
-| 6. Verify | `apksigner verify --min-sdk-version 21` (:80), `aapt2 dump badging` (:81) | sanity output |
+| 5. Key (first build only) | `keytool -genkeypair … -storepass:file P -keypass:file P` under `umask 077` (:73–80), then `chmod 600` (:81) | private key + password file |
+| 5. Sign | `apksigner sign --ks "$KS" --ks-key-alias hianime-tv --ks-pass "file:$KS_PASS_FILE" --out APK aligned.apk` (:82) | v1+v2+v3 signed (v1 is added automatically because min SDK < 24) |
+| 6. Verify | `apksigner verify --min-sdk-version 21` (:86), `aapt2 dump badging` (:87) | sanity output |
 
 Expected badging lines:
 
@@ -80,7 +80,7 @@ Two apps that print the same certificate digest share a key. That's only accepta
 ### 1. `cannot find symbol … method metafactory(Lookup,String,…) location: interface LambdaMetafactory`
 
 ```
-src/…/AdBlocker.java:66: error: cannot find symbol
+src/…/AdBlocker.java:72: error: cannot find symbol
         Thread loader = new Thread(() -> {
   symbol:   method metafactory(...)
 Fatal Error: Unable to find method metafactory

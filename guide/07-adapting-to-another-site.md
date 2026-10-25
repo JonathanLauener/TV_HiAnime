@@ -26,7 +26,7 @@ test ! -e keystore && ! find . -name '*.jks' -o -name '*.password' | grep -q . &
 | Package name | `AndroidManifest.xml` `package=`, `src/tv/hianime/wrapper/` path + `package` lines, `PKG_DIR` and the BuildConfig heredoc in `build.sh` (:13, :31–33) | A new package installs side by side with the old app |
 | App label | `res/values/strings.xml` | |
 | Icon + banner | `res/mipmap-*/ic_launcher.png`, `res/drawable-xhdpi/banner.png` (320×180) | Original artwork (04) |
-| APK name, key alias, default key path | `build.sh` (`APK=` :29–30, `KS=` default :59, `-alias` :71, `--ks-key-alias` :76) | Each app gets its own key |
+| APK name, key alias, default key path | `build.sh` (`APK=` :29–30, `KS=` default :59, `-alias` :77, `--ks-key-alias` :82) | Each app gets its own key |
 | Version | `android:versionCode`/`versionName` in the manifest **and** `VERSION_CODE`/`VERSION_NAME` in `build.sh` | The manifest values win (04) |
 | `HOME_URL` | MainActivity.java:56 | Start page |
 | `mainHosts` seed | MainActivity.java:174 | Every domain the **main frame** may show |
